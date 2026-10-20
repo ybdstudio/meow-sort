@@ -1,0 +1,18 @@
+{
+  "name": "meow-sort-native",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Meow Sort - TikTok Minis native port of the H5 prototype",
+  "scripts": {
+    "levels": "node tools/gen_levels.js 60",
+    "atlas": "node tools/bake_atlas.js",
+    "build": "node tools/build_native.js",
+    "build:debug": "node tools/build_native.js --debug --no-minify",
+    "serve": "cd dist && python3 -m http.server 8000",
+    "test": "node tools/test_emulator.js"
+  },
+  "devDependencies": {
+    "terser": "^5.31.0",
+    "playwright": "^1.56.0"
+  }
+}

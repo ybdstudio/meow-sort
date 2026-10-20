@@ -1,0 +1,11 @@
+{
+  "appid": "YOUR_APP_ID",
+  "projectname": "meow-sort",
+  "description": "Meow Sort - cat sorting puzzle (TikTok Minis native)",
+  "compileType": "game",
+  "setting": {
+    "es6": true,
+    "minified": true,
+    "urlCheck": true
+  }
+}

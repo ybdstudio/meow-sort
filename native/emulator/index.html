@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Meow Sort — TikTok Minis emulator</title>
+<!-- All game paths (game.js, res/cats.png) resolve against the package folder, like on device. -->
+<base href="../meow-sort/">
+<style>
+  html, body { margin: 0; height: 100%; background: #16161d; color: #ddd; font: 13px system-ui, sans-serif; overflow: hidden; }
+  #bar { position: fixed; left: 0; right: 0; top: 0; height: 34px; display: flex; gap: 10px; align-items: center; padding: 0 12px;
+         background: #23232d; border-bottom: 1px solid #333; z-index: 5; white-space: nowrap; overflow-x: auto; }
+  #bar select, #bar button { background: #33333f; color: #eee; border: 1px solid #555; border-radius: 6px; padding: 3px 8px; font: inherit; }
+  #bar label { display: flex; gap: 4px; align-items: center; }
+  #stage { position: absolute; top: 34px; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; }
+  #phone { position: relative; background: #000; border-radius: 36px; box-shadow: 0 0 0 10px #2b2b33, 0 20px 60px rgba(0,0,0,.6); overflow: hidden; touch-action: none; }
+  #phone canvas { position: absolute; left: 0; top: 0; touch-action: none; }
+  #capsule { position: absolute; display: flex; align-items: center; justify-content: space-around; background: rgba(0,0,0,.35);
+             border: 1px solid rgba(255,255,255,.35); border-radius: 16px; color: #fff; font-weight: 700; pointer-events: none; z-index: 3; }
+  #notch { position: absolute; left: 50%; transform: translateX(-50%); top: 0; width: 126px; height: 30px; background: #000; border-radius: 0 0 18px 18px; z-index: 3; pointer-events: none; }
+  #home { position: absolute; left: 50%; transform: translateX(-50%); bottom: 8px; width: 134px; height: 5px; border-radius: 3px; background: rgba(255,255,255,.8); z-index: 3; pointer-events: none; }
+  #sheet { position: absolute; inset: 0; display: none; align-items: flex-end; justify-content: center; background: rgba(0,0,0,.45); z-index: 4; }
+  #sheet .card { width: 100%; background: #fff; color: #111; border-radius: 18px 18px 0 0; padding: 18px 18px 26px; box-sizing: border-box; font-size: 15px; }
+  #sheet .card h3 { margin: 0 0 6px; font-size: 16px; }
+  #sheet .card p { margin: 0 0 14px; color: #555; }
+  #sheet .row { display: flex; gap: 10px; }
+  #sheet button { flex: 1; padding: 11px; border-radius: 10px; border: 0; font: 600 15px system-ui; }
+  #sheet .ok { background: #fe2c55; color: #fff; } #sheet .no { background: #eee; }
+  #log { position: fixed; right: 8px; bottom: 8px; width: 320px; max-height: 38vh; overflow: auto; font: 11px ui-monospace, monospace; color: #9c9;
+         background: rgba(0,0,0,.55); border-radius: 8px; padding: 6px 8px; z-index: 6; }
+  #log .w { color: #fc6; } #log .e { color: #f77; }
+  @media (max-width: 600px) { #bar, #log { display: none; } #stage { top: 0; } #phone { border-radius: 0; box-shadow: none; } }
+</style>
+</head>
+<body>
+<div id="bar">
+  <b>Meow Sort · Minis emulator</b>
+  <label>Device <select id="dev"></select></label>
+  <label><input type="checkbox" id="quirks"> iOS audio quirks</label>
+  <label><input type="checkbox" id="shadow"> shadowBlur glow</label>
+  <button id="hide">Hide → Show</button>
+  <button id="reward">Grant pending missions</button>
+  <button id="wipe">Clear save</button>
+</div>
+<div id="stage"><div id="phone"><div id="notch"></div><div id="capsule"><span>···</span><span>✕</span></div><div id="home"></div>
+  <div id="sheet"><div class="card"><h3 id="sh-t"></h3><p id="sh-p"></p><div class="row"><button class="no" id="sh-no">Cancel</button><button class="ok" id="sh-ok">OK</button></div></div></div>
+</div></div>
+<div id="log"></div>
+<script>
+/* =====================================================================
+   TTMinis.game / tt shim for local testing. Mirrors the native runtime:
+   first createCanvas() is on-screen, later ones offscreen; touch events
+   carry {touches, changedTouches, timeStamp}; storage is string-based;
+   revisit/share APIs open a TikTok-like bottom sheet.
+   Query: ?device=iphone14|iphonese|android|pixel7  ?ttquirks=1  ?shadow=1
+          ?dev=1 (debug tools)  ?level=N  ?oldclient=1 (no mission APIs)
+   ===================================================================== */
+(function () {
+  var Q = {}; location.search.replace(/^\?/, '').split('&').forEach(function (kv) { var p = kv.split('='); if (p[0]) Q[p[0]] = decodeURIComponent(p[1] || ''); });
+  var DEVICES = {
+    iphone14: { w: 390, h: 844, dpr: 3, top: 47, bottom: 34, notch: true, platform: 'ios', system: 'iOS 17.4' },
+    iphonese: { w: 375, h: 667, dpr: 2, top: 20, bottom: 0, notch: false, platform: 'ios', system: 'iOS 16.0' },
+    pixel7:   { w: 412, h: 915, dpr: 2.625, top: 24, bottom: 0, notch: false, platform: 'android', system: 'Android 14' },
+    android:  { w: 360, h: 780, dpr: 3, top: 28, bottom: 16, notch: false, platform: 'android', system: 'Android 12' },
+    tablet:   { w: 768, h: 1024, dpr: 2, top: 20, bottom: 0, notch: false, platform: 'ios', system: 'iPadOS 17' }
+  };
+  var devName = DEVICES[Q.device] ? Q.device : 'iphone14', D = DEVICES[devName];
+  var mobile = window.matchMedia('(max-width: 600px)').matches;
+  if (mobile) D = { w: innerWidth, h: innerHeight, dpr: devicePixelRatio || 2, top: 0, bottom: 0, notch: false, platform: 'web', system: 'web' };
+
+  // ---- chrome: toolbar ----
+  var sel = document.getElementById('dev');
+  Object.keys(DEVICES).forEach(function (k) { var o = document.createElement('option'); o.value = k; o.textContent = k + ' (' + DEVICES[k].w + '×' + DEVICES[k].h + ')'; if (k === devName) o.selected = true; sel.appendChild(o); });
+  function reloadWith(k, v) { var u = new URL(location.href); if (v === null) u.searchParams.delete(k); else u.searchParams.set(k, v); location.href = u.toString(); }
+  sel.onchange = function () { reloadWith('device', sel.value); };
+  var qq = document.getElementById('quirks'); qq.checked = Q.ttquirks === '1'; qq.onchange = function () { reloadWith('ttquirks', qq.checked ? '1' : null); };
+  var sh = document.getElementById('shadow'); sh.checked = Q.shadow === '1'; sh.onchange = function () { reloadWith('shadow', sh.checked ? '1' : null); };
+
+  var phone = document.getElementById('phone');
+  phone.style.width = D.w + 'px'; phone.style.height = D.h + 'px';
+  document.getElementById('notch').style.display = D.notch ? '' : 'none';
+  document.getElementById('home').style.display = D.bottom ? '' : 'none';
+  var CAP = { width: 87, height: 32, right: D.w - 8, top: D.top + 6 };
+  CAP.left = CAP.right - CAP.width; CAP.bottom = CAP.top + CAP.height;
+  var cap = document.getElementById('capsule');
+  cap.style.left = CAP.left + 'px'; cap.style.top = CAP.top + 'px'; cap.style.width = CAP.width + 'px'; cap.style.height = CAP.height + 'px';
+  function fitPhone() {
+    if (mobile) return;
+    var st = document.getElementById('stage'), k = Math.min(1, (st.clientHeight - 40) / D.h, (st.clientWidth - 40) / D.w);
+    phone.style.transform = 'scale(' + k + ')'; phone._k = k;
+  }
+  window.addEventListener('resize', fitPhone); fitPhone();
+
+  // ---- log panel ----
+  var logEl = document.getElementById('log');
+  function addLog(cls, args) {
+    var d = document.createElement('div'); d.className = cls;
+    d.textContent = [].map.call(args, function (a) { try { return typeof a === 'string' ? a : JSON.stringify(a); } catch (e) { return String(a); } }).join(' ').slice(0, 400);
+    logEl.appendChild(d); logEl.scrollTop = 1e9;
+    while (logEl.childNodes.length > 80) logEl.removeChild(logEl.firstChild);
+  }
+  ['log', 'warn', 'error'].forEach(function (m, i) { var o = console[m].bind(console); console[m] = function () { o.apply(null, arguments); addLog(['', 'w', 'e'][i], arguments); }; });
+  window.addEventListener('error', function (e) { addLog('e', ['Uncaught ' + e.message + ' @' + (e.filename || '').split('/').pop() + ':' + e.lineno]); });
+
+  // ---- bottom sheet (simulates TikTok system UI) ----
+  function sheet(title, body, okText, cb) {
+    var el = document.getElementById('sheet');
+    document.getElementById('sh-t').textContent = title; document.getElementById('sh-p').textContent = body;
+    document.getElementById('sh-ok').textContent = okText || 'OK';
+    el.style.display = 'flex';
+    document.getElementById('sh-ok').onclick = function () { el.style.display = 'none'; cb(true); };
+    document.getElementById('sh-no').onclick = function () { el.style.display = 'none'; cb(false); };
+  }
+  function later(f) { setTimeout(f, 120 + Math.random() * 200); }
+
+  // ---- mission state (persists like the real platform would) ----
+  var MKEY = '__ttemu_missions';
+  function M() { try { return JSON.parse(localStorage.getItem(MKEY) || '{}'); } catch (e) { return {}; } }
+  function setM(o) { localStorage.setItem(MKEY, JSON.stringify(o)); }
+
+  // ---- canvas / touch ----
+  var canvases = 0, screenCanvas = null;
+  function createCanvas() {
+    var c = document.createElement('canvas');
+    if (canvases++ === 0) {
+      screenCanvas = c; c.style.width = D.w + 'px'; c.style.height = D.h + 'px';
+      phone.insertBefore(c, phone.firstChild); hookTouch(c);
+    }
+    return c;
+  }
+  var touchCbs = { start: [], move: [], end: [], cancel: [] };
+  function hookTouch(c) {
+    function ev(kind, e) {
+      var r = c.getBoundingClientRect(), k = phone._k || 1;
+      var t = { identifier: e.pointerId, clientX: (e.clientX - r.left) / k, clientY: (e.clientY - r.top) / k };
+      var res = { touches: kind === 'end' || kind === 'cancel' ? [] : [t], changedTouches: [t], timeStamp: Date.now() };
+      touchCbs[kind].forEach(function (f) { try { f(res); } catch (err) { console.error(err); } });
+    }
+    c.addEventListener('pointerdown', function (e) { e.preventDefault(); c.setPointerCapture && c.setPointerCapture(e.pointerId); ev('start', e); });
+    c.addEventListener('pointermove', function (e) { if (e.buttons || e.pointerType === 'touch') ev('move', e); });
+    c.addEventListener('pointerup', function (e) { ev('end', e); });
+    c.addEventListener('pointercancel', function (e) { ev('cancel', e); });
+  }
+
+  // ---- audio (with optional iOS-quirk simulation) ----
+  function createWebAudioContext() {
+    var AC = window.AudioContext || window.webkitAudioContext; if (!AC) return null;
+    var ac = new AC();
+    if (Q.ttquirks === '1') {
+      // Simulate builds where AudioParam ramps are missing: the game must not throw/freeze.
+      var P = window.AudioParam && AudioParam.prototype;
+      if (P && !P.__q) { P.__q = 1; P.exponentialRampToValueAtTime = undefined; P.linearRampToValueAtTime = undefined; }
+      console.warn('[emu] ttquirks: AudioParam ramps disabled');
+    }
+    var unlock = function () { if (ac.state === 'suspended') ac.resume(); };
+    document.addEventListener('pointerdown', unlock, true);
+    return ac;
+  }
+
+  var showCbs = [], hideCbs = [];
+  function fireHide() { hideCbs.forEach(function (f) { try { f(); } catch (e) { console.error(e); } }); }
+  function fireShow(q) { showCbs.forEach(function (f) { try { f({ query: q || {}, scene: '' }); } catch (e) { console.error(e); } }); }
+  document.addEventListener('visibilitychange', function () { if (document.hidden) fireHide(); else fireShow(); });
+  document.getElementById('hide').onclick = function () { console.log('[emu] onHide'); fireHide(); setTimeout(function () { console.log('[emu] onShow'); fireShow(); }, 600); };
+  document.getElementById('reward').onclick = function () { var m = M(); if (m.shortcutAdded) m.shortcutReady = true; if (m.entranceStarted) m.entranceReady = true; setM(m); console.log('[emu] missions marked complete', m); fireShow({ from: 'profile' }); };
+  document.getElementById('wipe').onclick = function () { localStorage.clear(); console.log('[emu] storage cleared'); location.reload(); };
+
+  var noMissions = Q.oldclient === '1';
+  var api = {
+    canIUse: function (name) { if (noMissions && /Shortcut|EntranceMission|shareAppMessage/.test(name)) return false; return typeof api[name] === 'function'; },
+    getSystemInfoSync: function () {
+      return { screenWidth: D.w, screenHeight: D.h, windowWidth: D.w, windowHeight: D.h, pixelRatio: D.dpr, devicePixelRatio: D.dpr,
+        deviceOrientation: 'portrait', platform: D.platform, system: D.system, language: navigator.language, SDKVersion: '0.35.0-emu', version: '46.3.0',
+        safeArea: { top: D.top, left: 0, right: D.w, bottom: D.h - D.bottom, width: D.w, height: D.h - D.top - D.bottom } };
+    },
+    getWindowInfo: function () { var s = api.getSystemInfoSync(); return { pixelRatio: s.pixelRatio, screenWidth: s.screenWidth, screenHeight: s.screenHeight, windowWidth: s.windowWidth, windowHeight: s.windowHeight, statusBarHeight: D.top, safeArea: s.safeArea, screenTop: 0 }; },
+    getMenuButtonBoundingClientRect: function () { return mobile ? null : { left: CAP.left, top: CAP.top, right: CAP.right, bottom: CAP.bottom, width: CAP.width, height: CAP.height }; },
+    getLaunchOptionsSync: function () { return { query: Q, scene: '' }; },
+    getEnterOptionsSync: function () { return { query: Q, scene: '' }; },
+    createCanvas: createCanvas,
+    createImage: function () { return new Image(); },
+    setPreferredFramesPerSecond: function (n) { console.log('[emu] fps', n); },
+    onTouchStart: function (f) { touchCbs.start.push(f); }, onTouchMove: function (f) { touchCbs.move.push(f); },
+    onTouchEnd: function (f) { touchCbs.end.push(f); }, onTouchCancel: function (f) { touchCbs.cancel.push(f); },
+    getStorageSync: function (k) { var v = localStorage.getItem(k); return v === null ? '' : v; },
+    setStorageSync: function (k, v) { localStorage.setItem(k, typeof v === 'string' ? v : JSON.stringify(v)); },
+    createWebAudioContext: createWebAudioContext,
+    createInnerAudioContext: function () { return { play: function () {}, stop: function () {}, onEnded: function () {} }; },
+    onShow: function (f) { showCbs.push(f); }, onHide: function (f) { hideCbs.push(f); },
+    vibrateShort: function () { if (navigator.vibrate) navigator.vibrate(15); }, vibrateLong: function () { if (navigator.vibrate) navigator.vibrate(400); },
+    loadSubpackage: function (o) {
+      var p = 0, task = { cbs: [], onProgressUpdate: function (f) { this.cbs.push(f); } };
+      var iv = setInterval(function () {
+        p = Math.min(100, p + 25); task.cbs.forEach(function (f) { f({ progress: p, totalBytesWritten: p, totalBytesExpectedToWrite: 100 }); });
+        if (p >= 100) { clearInterval(iv); o.success && o.success(); o.complete && o.complete(); }
+      }, 60);
+      return task;
+    },
+    login: function (o) { later(function () { o.success && o.success({ code: 'emu-code-' + Date.now(), anonymousCode: 'emu-anon' }); }); },
+    addShortcut: function (o) {
+      sheet('Add Meow Sort to Home Screen?', 'Get quick access from your home screen.', 'Add', function (ok) {
+        if (ok) { var m = M(); m.shortcutAdded = true; m.shortcutReady = true; setM(m); o.success && o.success(); }
+        else o.fail && o.fail({ error_code: 1, error_msg: 'cancel' });
+        o.complete && o.complete();
+      });
+    },
+    getShortcutMissionReward: function (o) { later(function () { var m = M(), can = !!m.shortcutReady && !m.shortcutPaid; o.success && o.success({ canReceiveReward: can }); o.complete && o.complete(); }); },
+    startEntranceMission: function (o) {
+      sheet('Revisit mission', 'Open Meow Sort from your TikTok profile next time to get a reward. (Emulator: press "Grant pending missions".)', 'Got it', function () {
+        var m = M(); m.entranceStarted = true; setM(m); o.success && o.success(); o.complete && o.complete();
+      });
+    },
+    getEntranceMissionReward: function (o) { later(function () { var m = M(), can = !!m.entranceReady && !m.entrancePaid; o.success && o.success({ canReceiveReward: can }); o.complete && o.complete(); }); },
+    reportMissionRewardGranted: function (o) { var m = M(); if (o.mission === 'shortcut') m.shortcutPaid = true; if (o.mission === 'revisit') m.entrancePaid = true; setM(m); console.log('[emu] reward reported', o.mission); },
+    shareAppMessage: function (o) {
+      sheet('Send to friends', '“' + (o.title || '') + '”  query: ' + (o.query || ''), 'Send', function (ok) {
+        if (ok) o.success && o.success(); else o.fail && o.fail({ error_code: 1, error_msg: 'cancel' });
+        o.complete && o.complete();
+      });
+    }
+  };
+  window.TTMinis = { game: api };
+  window.GameGlobal = window;
+  console.log('[emu] device', devName, D.w + 'x' + D.h, '@' + D.dpr + 'x', Q.ttquirks === '1' ? '+quirks' : '');
+
+  var s = document.createElement('script'); s.src = 'game.js?v=' + Date.now();
+  s.onerror = function () { console.error('[emu] could not load game.js — run tools/build_native.js and serve dist/ over http'); };
+  document.body.appendChild(s);
+})();
+</script>
+</body>
+</html>
