@@ -31,7 +31,7 @@ const ok = (c, m) => { console.log((c ? '  PASS ' : '  FAIL ') + m); if (!c) fai
   page.on('pageerror', e => errors.push(e.message));
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
   const shot = async n => { if (SHOTS) await page.locator('#phone').screenshot({ path: path.join(SHOTS, n + '.png') }); };
-  const ready = () => page.waitForFunction(() => window.MeowSort && window.MeowSort.ready, null, { timeout: 20000 });
+  const ready = () => page.waitForFunction(() => window.MeowSort && window.MeowSort.ready && MeowSort.hs().started, null, { timeout: 20000 });
   // tap at a game-logical point using a real pointer event on the canvas
   const tapLogical = async (x, y) => {
     const p = await page.evaluate(([x, y]) => {
@@ -109,10 +109,14 @@ const ok = (c, m) => { console.log((c ? '  PASS ' : '  FAIL ') + m); if (!c) fai
   await shot('05_rewards');
   const before = await page.evaluate(() => MeowSort.game.coins);
   await tapLogical(50 + 440 - 40 - 58, 200 + 62 + 44 + 21); await page.waitForTimeout(300);   // "Add" on the shortcut row
+  await page.waitForTimeout(400);
+  ok(await page.evaluate(() => MeowSort.ui().panel === 'pop_launch'), 'Free Coins → "Add" opens the Launch Reward popup');
+  const go = await page.evaluate(() => MeowSort.buttons().filter(b => b.id === 'pop_cta').pop());
+  await tapLogical(go.x, go.y); await page.waitForTimeout(300);
   ok(await page.isVisible('#sheet'), 'shortcut tap opens the TikTok system sheet');
   await page.click('#sh-ok'); await page.waitForTimeout(900);
-  const after = await page.evaluate(() => ({ coins: MeowSort.game.coins, claimed: MeowSort.minis().state.shortcutClaimed }));
-  ok(after.claimed && after.coins === before + 200, 'shortcut reward granted once (+200)');
+  const after = await page.evaluate(() => ({ coins: MeowSort.game.coins, claimed: MeowSort.hs().kit.tiktokMission.done('shortcut') }));
+  ok(after.claimed && after.coins === before + 250, 'shortcut mission via HSGame.tiktokMission → onGive +250 (tiktok_shortcut)');
   await shot('06_reward_popup');
   await tapLogical(270, 557); await page.waitForTimeout(200);
   ok(await page.evaluate(() => !MeowSort.platform.global.MeowSort || true), 'popup collect tap handled');

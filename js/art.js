@@ -11,6 +11,7 @@ var GLOW = {};                        // GLOW[color] = { img, sx, sy, w, h } bak
 function loadSprites(done) {
   Platform.loadImage(CAT_ATLAS.image, function (err, img) {
     if (err) { done(err); return; }
+    Platform.loadImage(UI_ATLAS.image, function (e3, uimg) { if (e3) Platform.warn('ui atlas missing', e3); else UI_IMG = uimg; });
     if (CAT_ATLAS.glowImage) Platform.loadImage(CAT_ATLAS.glowImage, function (e2, gimg) {
       if (e2) { Platform.warn('glow atlas missing', e2); return; }      // optional: selection just shows no halo
       Object.keys(CAT_ATLAS.glow).forEach(function (c) {

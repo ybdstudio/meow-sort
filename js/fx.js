@@ -2,7 +2,7 @@
 var game;
 var fx = {
   onLoad: function () {
-    winDoubled = false; boostTaken = false; levelStartT = Anim.time;
+    winDoubled = false; winBonus = 0; boostTaken = false; levelStartT = Anim.time;
     Anim.reset(); Anim.displayStars = game.stars; Anim.hintMove = null;
     PODS[1].icon = 'red'; PODS[1].mood = 'determined';
     saveProgress(); computeHint();

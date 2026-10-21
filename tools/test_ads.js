@@ -1,5 +1,7 @@
 #!/usr/bin/env node
-/* Ads test suite (emulator + fake TikTok ads / fake HS SDK) and IPU simulation gate.
+/* Ads + HS kit test suite, in the emulator with a fake HS backend (tt.request) and fake TikTok ads.
+   Everything goes through HSGame: showAd('<label>') → TikTok ad → onGive. Also runs the kit's own
+   hs-check.mjs on the package and the 5-minute IPU simulation.
    node tools/test_ads.js [--shots dir] */
 const http = require('http'), fs = require('fs'), path = require('path'), cp = require('child_process');
 const ROOT = path.join(__dirname, '..'), DIST = path.join(ROOT, 'dist');
@@ -16,137 +18,189 @@ const server = http.createServer((q, r) => {
 let failures = 0; const ok = (c, m) => { console.log((c ? '  PASS ' : '  FAIL ') + m); if (!c) failures++; };
 
 (async () => {
-  // 1. IPU simulation gate (same policy code as the game)
+  // 0. the HS kit's own checker on the built package
+  const chk = JSON.parse(cp.spawnSync(process.execPath, [path.join(__dirname, 'hs/hs-check.mjs'), path.join(DIST, 'meow-sort'), '--json']).stdout.toString());
+  ok(chk.fails === 0, 'hs-check.mjs: ' + chk.fails + ' fail, ' + chk.warns + ' warn' + (chk.fails ? ' → ' + chk.lines.filter(l => l.level === 'FAIL').map(l => l.msg).join(' | ') : ''));
+  const warns = chk.lines.filter(l => l.level === 'WARN').map(l => l.msg);
+  ok(warns.every(w => /has capitals/.test(w)), 'hs-check warnings are only the capitalised dashboard labels (' + warns.length + ')');
+
+  // 1. IPU simulation gate
   const sim = JSON.parse(cp.execFileSync(process.execPath, [path.join(__dirname, 'sim_ads.js'), '--json', '--runs', '3000']).toString());
   ok(sim.ipu_median >= 8 && sim.ipu_mean >= 7.5, `sim ${sim.profile}: IPU in 5 min median ${sim.ipu_median}, mean ${sim.ipu_mean} (target 8)`);
-  const simB = JSON.parse(cp.execFileSync(process.execPath, [path.join(__dirname, 'sim_ads.js'), '--json', '--runs', '3000', '--profile', 'balanced']).toString());
-  ok(simB.ipu_mean < sim.ipu_mean, `sim balanced profile is lighter (mean ${simB.ipu_mean})`);
 
   await new Promise(r => server.listen(0, r));
   const base = 'http://127.0.0.1:' + server.address().port + '/emulator/index.html?device=iphone14';
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 900, height: 1000 } });
-  const errors = []; page.on('pageerror', e => errors.push(e.message)); page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+  const errors = [], logs = [];
+  page.on('pageerror', e => errors.push(e.message));
+  page.on('console', m => { logs.push(m.text()); if (m.type() === 'error') errors.push(m.text()); });
   const shot = async n => { if (SHOTS) await page.locator('#phone').screenshot({ path: path.join(SHOTS, n + '.png') }); };
-  const ready = () => page.waitForFunction(() => window.MeowSort && MeowSort.ready, null, { timeout: 20000 });
+  const ready = () => page.waitForFunction(() => window.MeowSort && MeowSort.ready && MeowSort.hs().started, null, { timeout: 20000 });
   const tapL = async (x, y) => {
     const p = await page.evaluate(([x, y]) => { const s = MeowSort.logicalToScreen(x, y), c = document.querySelector('#phone canvas').getBoundingClientRect(), k = document.getElementById('phone')._k || 1; return { x: c.left + s.x * k, y: c.top + s.y * k }; }, [x, y]);
     await page.mouse.click(p.x, p.y); await page.waitForTimeout(80);
   };
-  const open = async (q) => { await page.goto(base + '&' + q); await page.evaluate(() => localStorage.clear()); await page.reload(); await ready(); await page.waitForTimeout(200); };
+  const open = async (q, keepCloud) => {
+    await page.goto(base + '&' + q);
+    await page.evaluate((k) => { const p = localStorage.getItem('__hsemu_profile'); localStorage.clear(); if (k && p) localStorage.setItem('__hsemu_profile', p); }, !!keepCloud);
+    await page.reload(); await ready(); await page.waitForTimeout(300);
+  };
   const idle = () => page.waitForFunction(() => !MeowSort.ads().showing, null, { timeout: 15000 });
   const solveLevel = async () => {
     for (let n = 0; n < 80; n++) {
-      const st = await page.evaluate(() => MeowSort.game.state);
-      if (st === 'LEVEL_COMPLETE') break;
+      if (await page.evaluate(() => MeowSort.game.state) === 'LEVEL_COMPLETE') break;
       if (await page.evaluate(() => MeowSort.ads().showing)) { await idle(); continue; }
       await page.evaluate(() => MeowSort.step());
       await page.waitForFunction(() => { const g = MeowSort.game; return g.state === 'READY' || g.state === 'LEVEL_COMPLETE' || MeowSort.ads().showing; }, null, { timeout: 15000 });
     }
     await idle(); await page.waitForTimeout(1500);
   };
-  const st = () => page.evaluate(() => ({ coins: MeowSort.game.coins, lvl: MeowSort.game.levelIndex, state: MeowSort.game.state, imp: MeowSort.ads().impressions(), stats: MeowSort.ads().stats, prov: MeowSort.ads().provider, showing: MeowSort.ads().showing }));
+  const st = () => page.evaluate(() => ({ coins: MeowSort.game.coins, lvl: MeowSort.game.levelIndex, state: MeowSort.game.state, imp: MeowSort.ads().impressions(), stats: MeowSort.ads().stats, prov: MeowSort.ads().provider, showing: MeowSort.ads().showing, hs: MeowSort.hs().loggedIn }));
+  const dash = JSON.parse(fs.readFileSync(path.join(DIST, 'meow-sort.hs-dashboard.json'), 'utf8')).iaa_config;
+  const unit = l => dash.placements.find(p => p.label === l).ads[0].id;
 
-  // 2. TikTok provider (fake ads, auto-complete after 1 s)
-  await open('fakeads=1&adauto=1&addur=1');
+  // 1b. Minis UI: loading art, 3 buttons, popups → HS missions / share → onGive
+  const tapId = async (id) => { const b = await page.evaluate((id) => MeowSort.buttons().filter(b => b.id === id).pop(), id); if (!b) return false; await tapL(b.x, b.y); return true; };
+  const btnIds = () => page.evaluate(() => MeowSort.buttons().map(b => b.id));
+  await open('adauto=1&addur=1');
+  ok(await page.evaluate(() => MeowSort.ui().loadingArt && MeowSort.ui().uiArt), 'loading art + UI atlas loaded');
+  let ids = await btnIds();
+  ok(['mini_shortcut', 'mini_profile', 'mini_share'].every(i => ids.includes(i)), 'play screen shows Add to screen / Revisit gift / Share gift');
+  // Add to screen → Launch Reward → Go → TikTok sheet → +250 (tiktok_shortcut) via onGive
+  await tapId('mini_shortcut'); await page.waitForTimeout(400);
+  ok(await page.evaluate(() => MeowSort.ui().panel === 'pop_launch' && MeowSort.game.state === 'PAUSED'), 'Add to screen → Launch Reward popup');
+  let cBefore = (await st()).coins;
+  await tapId('pop_cta'); await page.waitForTimeout(300);
+  ok(await page.isVisible('#sheet'), 'Go → TikTok "add to home screen" sheet (HSGame.tiktokMission)');
+  await page.click('#sh-ok'); await page.waitForTimeout(900);
   let s = await st();
-  ok(s.prov === 'tt', 'provider = tt (TikTok createRewardedVideoAd / createInterstitialAd)');
+  let ui = await page.evaluate(() => MeowSort.ui());
+  ok(s.coins === cBefore + 250 && ui.rewardPopup && ui.rewardPopup.title === 'Launch Reward', 'onGive tiktok_shortcut → +250, "Launch Reward" popup');
+  await tapL(270, 557); await page.waitForTimeout(300);
+  ok(!(await btnIds()).includes('mini_shortcut'), 'Add to screen button gone once rewarded');
+  // Revisit gift → Entry Reward → Claim → profile mission; TikTok confirms on return → +200
+  await tapId('mini_profile'); await page.waitForTimeout(400);
+  ok(await page.evaluate(() => MeowSort.ui().panel === 'pop_entry'), 'Revisit gift → Entry Reward popup');
+  await shot('u_entry');
+  cBefore = (await st()).coins;
+  await tapId('pop_cta'); await page.waitForTimeout(300);
+  await page.click('#sh-ok'); await page.waitForTimeout(500);
+  await page.click('#reward'); await page.waitForTimeout(1200);       // emulator: player came back from the profile
+  s = await st(); ui = await page.evaluate(() => MeowSort.ui());
+  ok(s.coins === cBefore + 200 && ui.rewardPopup && ui.rewardPopup.title === 'Entry Reward', 'return from profile → onGive tiktok_profile +200, "Entry Reward" popup');
+  await tapL(270, 557); await page.waitForTimeout(300);
+  // Share gift → Share Rewards → Share → +100 (daily)
+  await tapId('mini_share'); await page.waitForTimeout(400);
+  ok(await page.evaluate(() => MeowSort.ui().panel === 'pop_share'), 'Share gift → Share Rewards popup');
+  cBefore = (await st()).coins;
+  await tapId('pop_cta'); await page.waitForTimeout(300);
+  await page.click('#sh-ok'); await page.waitForTimeout(700);
+  s = await st();
+  ok(s.coins === cBefore + 100, 'HSGame.share → onGive share +100');
+  await tapL(270, 557); await page.waitForTimeout(300);
+  ids = await btnIds();
+  ok(!ids.includes('mini_profile') && !ids.includes('mini_share'), 'Revisit gift + Share gift gone after their rewards (share is back tomorrow)');
+  // close button
+  await page.evaluate(() => MeowSort.openPanel('pop_share')); await page.waitForTimeout(300);
+  await tapId('pop_close'); await page.waitForTimeout(300);
+  ok(await page.evaluate(() => MeowSort.game.state === 'READY'), 'popup ✕ closes it');
+
+  // 2. HS online: rewards come only through onGive
+  await open('adauto=1&addur=1');
+  s = await st();
+  ok(s.prov === 'hs' && s.hs, 'HS kit started and logged in (fake backend) → ads provider hs');
+  ok(logs.some(l => /hs: placements .*Double Coin ✓/.test(l)), 'all 6 dashboard placements ready after login');
   await solveLevel();
-  ok((await st()).state === 'LEVEL_COMPLETE', 'level 1 complete');
-  ok(await page.evaluate(() => MeowSort.ads().rewardReady('R1')), 'R1 x2 Coins offered on the win panel');
-  await shot('a1_win_x2');
+  ok(await page.evaluate(() => MeowSort.ads().rewardReady('Double Coin')), '"Double Coin" offered on the win panel (HSGame.canShowAd)');
   const c0 = (await st()).coins;
-  await tapL(270, 550);                                  // "x2 Coins"
-  await page.waitForTimeout(300);
-  ok((await st()).showing, 'game frozen while the rewarded ad plays');
-  await shot('a2_fake_ad');
+  await tapL(270, 550); await page.waitForTimeout(300);
+  ok((await st()).showing, 'game frozen while the ad plays');
+  await shot('h1_ad');
   await idle(); await page.waitForTimeout(300);
   s = await st();
-  ok(s.coins === c0 + 50 && s.stats.reward === 1, 'R1 granted after watching: +50 coins (' + c0 + ' → ' + s.coins + ')');
-  await tapL(270, 557); await page.waitForTimeout(200);   // collect popup
-  await tapL(270, 619); await page.waitForTimeout(600);  // Next (no inter right after a rewarded ad)
+  ok(s.coins === c0 + 50, 'showAd("Double Coin") → onGive {coins:50} (' + c0 + ' → ' + s.coins + ')');
+  ok(logs.some(l => l.includes('create RewardedVideoAd ' + unit('Double Coin'))), 'HS played the dashboard unit for "Double Coin" (' + unit('Double Coin') + ')');
+  await shot('h2_popup');
+  await tapL(270, 557); await page.waitForTimeout(200);
+  await tapL(270, 619); await page.waitForTimeout(600);
   s = await st();
-  ok(s.lvl === 1 && s.stats.inter === 0, 'Next after x2 Coins → level 2 without an interstitial');
+  ok(s.lvl === 1 && s.stats.inter === 0, 'Next right after a rewarded ad → no interstitial');
 
-  // 3. Interstitial on Next (warm-up passed)
+  // 3. Interstitial "Inter1"
   await page.evaluate(() => { const p = MeowSort.ads().policy; p.start -= 120; p.lastReward -= 120; p.lastAny -= 120; });
   await solveLevel();
-  s = await st();
-  const interBefore = s.stats.inter;
-  ok(s.state === 'LEVEL_COMPLETE', 'level 2 complete' + (s.stats.inter ? ' (I_break shown during play: ' + s.stats.inter + ')' : ''));
+  const ib = (await st()).stats.inter;
   await page.evaluate(() => { const p = MeowSort.ads().policy; p.lastInter -= 120; p.lastReward -= 120; });
-  await tapL(270, 619); await page.waitForTimeout(400);
-  ok(await page.evaluate(() => !!MeowSort.ads().notice), '"Ad break" notice before the interstitial');
-  await shot('a3_ad_break');
+  const coinsBeforeInter = (await st()).coins;
+  await tapL(270, 619); await page.waitForTimeout(300);
+  ok(await page.evaluate(() => !!MeowSort.ads().notice), '"Ad break" notice before Inter1');
+  await shot('h3_break');
   await page.waitForTimeout(1300); await idle(); await page.waitForTimeout(400);
   s = await st();
-  ok(s.stats.inter === interBefore + 1 && s.lvl === 2, 'I_next interstitial shown, then level 3 loads');
+  ok(s.stats.inter === ib + 1 && s.lvl === 2, 'showAd("Inter1") at Next → interstitial, then level 3');
+  ok(s.coins === coinsBeforeInter, 'Inter1 gives nothing (no reward key)');
+  ok(logs.some(l => l.includes('create InterstitialAd ' + unit('Inter1'))), 'HS played the dashboard interstitial unit (' + unit('Inter1') + ')');
 
-  // 4. Cooldown: an immediate second interstitial is refused
-  const why = await page.evaluate(() => MeowSort.ads().policy.canInter('I_restart', { level: 2, now: MeowSort.ads().sessionTime() }));
-  ok(why === 'cooldown', 'interstitial cooldown respected (' + why + ')');
-
-  // 5. R2 booster refill
-  await page.evaluate(() => { MeowSort.game.boosters.bed = 0; });
-  await page.evaluate(() => { const p = MeowSort.ads().policy; p.lastInter -= 120; });
+  // 4. Booster placements: reward via onGive, follow-up in the game
+  await page.evaluate(() => { MeowSort.game.boosters.bed = 0; MeowSort.game.boosters.shuffle = 0; });
+  await page.waitForFunction(() => MeowSort.game.state === 'READY');
   const beds0 = await page.evaluate(() => MeowSort.game.board.containers.filter(c => c.kind === 'bed').length);
   await tapL(390, 902); await page.waitForTimeout(200); await idle(); await page.waitForTimeout(300);
   const beds1 = await page.evaluate(() => MeowSort.game.board.containers.filter(c => c.kind === 'bed').length);
-  ok(beds1 === beds0 + 1, 'R2: "▶ Ad" on Extra Bed → watched → bed added (' + beds0 + ' → ' + beds1 + ')');
+  ok(beds1 === beds0 + 1, '"Extra Bed": onGive {extra_bed:1} → bed placed (' + beds0 + ' → ' + beds1 + ')');
+  await page.waitForFunction(() => MeowSort.game.state === 'READY');
+  const mv0 = await page.evaluate(() => MeowSort.ads().stats.reward);
+  await tapL(270, 902); await page.waitForTimeout(200); await idle(); await page.waitForTimeout(800);
+  ok(await page.evaluate(() => MeowSort.ads().stats.reward) === mv0 + 1 && await page.evaluate(() => MeowSort.game.boosters.shuffle) === 0,
+     '"Shuffle": onGive {shuffle:1} → used for a shuffle right away');
 
-  // 6. R3 rescue panel
+  // 5. Rescue
   await page.evaluate(() => MeowSort.openPanel('rescue')); await page.waitForTimeout(300);
-  await shot('a4_rescue');
+  await shot('h4_rescue');
   const sh0 = await page.evaluate(() => MeowSort.game.boosters.shuffle);
   await tapL(270, 534); await page.waitForTimeout(200); await idle(); await page.waitForTimeout(300);
   s = await st();
-  ok(s.state === 'READY' && await page.evaluate(() => MeowSort.game.boosters.shuffle) === sh0 + 1, 'R3 rescue: watched → game resumes with +1 shuffle (+1 bed)');
+  ok(s.state === 'READY' && await page.evaluate(() => MeowSort.game.boosters.shuffle) === sh0 + 1, '"Rescue": onGive {shuffle:1, extra_bed:1} → game resumes with an extra bed');
 
-  // 7. R4 gift pod + cooldown
+  // 6. Gift Pod + local cooldown
   const c1 = (await st()).coins;
   await tapL(354, 62); await page.waitForTimeout(200); await idle(); await page.waitForTimeout(300);
-  ok((await st()).coins === c1 + 100, 'R4 gift pod: +100 coins');
+  ok((await st()).coins === c1 + 100, '"Gift Pod": onGive {coins:100}');
   await tapL(270, 557); await page.waitForTimeout(200);
-  ok(await page.evaluate(() => MeowSort.ads().rewardCooldown('R4') > 40), 'R4 on cooldown afterwards (badge shows the countdown)');
-  await shot('a5_pod_cooldown');
+  ok(await page.evaluate(() => MeowSort.ads().rewardCooldown('Gift Pod') > 40), '"Gift Pod" on its 45 s cooldown');
+  await shot('h5_pod');
 
-  // 8. Closed early → no reward; no fill → no freeze
-  await open('fakeads=1&addur=4');
+  // 7. Cloud save: a new phone gets the progress back through onLoad
+  const cloudCoins = (await st()).coins, cloudLvl = (await st()).lvl;
+  let synced = false;                    // the SDK syncs on its own schedule (rate-limited); nudge it like hs-check does
+  for (let i = 0; i < 20 && !synced; i++) {
+    await page.evaluate(() => MeowSort.hs().kit.sdk.sync.syncNow().catch(() => {}));
+    await page.waitForTimeout(500);
+    synced = await page.evaluate((c) => { try { return JSON.parse(localStorage.getItem('__hsemu_profile')).coins === c; } catch (e) { return false; } }, cloudCoins);
+  }
+  ok(synced, 'progress reached the HS cloud (HSGame.save → /api/sync)');
+  await open('adauto=1&addur=1', true);
+  s = await st();
+  ok(s.coins === cloudCoins && s.lvl === cloudLvl, 'new phone: HSGame onLoad restores level ' + (cloudLvl + 1) + ' and ' + cloudCoins + ' coins');
+
+  // 8. Closed early / no fill / offline
+  await open('addur=4');
   const c2 = (await st()).coins;
-  await tapL(354, 62); await page.waitForTimeout(500);
-  await page.click('#adclose'); await page.waitForTimeout(400);
+  await tapL(354, 62); await page.waitForTimeout(600);
+  await page.click('#adclose'); await page.waitForTimeout(800);
   s = await st();
-  ok(s.coins === c2 && !s.showing, 'rewarded closed early → no reward, game unfrozen');
-  await open('fakeads=1&adfill=0');
-  await tapL(354, 62); await page.waitForTimeout(500);
+  ok(s.coins === c2 && !s.showing, 'closed early → HS gives nothing, game unfrozen');
+  await open('adfill=0');
+  const c3 = (await st()).coins;
+  await tapL(354, 62); await page.waitForTimeout(1200);
   s = await st();
-  ok(!s.showing && s.state === 'READY', 'no fill → toast, game keeps running');
-
-  // 9. HS provider path (fake HS SDK, API as assumed in hs_native.js)
-  await open('hsfake=1&adauto=1&addur=1');
+  ok(s.coins === c3 && !s.showing && s.state === 'READY', 'no fill → nothing given, game keeps running');
+  const errBefore = errors.length;
+  await open('hsoffline=1');
+  for (let i = errors.length - 1; i >= errBefore; i--) if (/^\[HS\.TikTokSDK\]/.test(errors[i])) errors.splice(i, 1);   // the SDK logs its failed login: expected offline
   s = await st();
-  ok(s.prov === 'hs', 'provider = hs when the HS SDK is present (fake)');
-  const c3 = s.coins;
-  await tapL(354, 62); await page.waitForTimeout(200); await idle(); await page.waitForTimeout(300);
-  ok((await st()).coins === c3 + 100, 'HS onGive → R4 reward granted');
-
-  // 9b. HS grant arriving AFTER the close (queued/late onGive) is still delivered once
-  await open('hsfake=1&adauto=1&addur=1&hsgivedelay=2500');
-  const c4 = (await st()).coins;
-  await tapL(354, 62); await page.waitForTimeout(200); await idle();
-  ok((await st()).coins === c4, 'late onGive: nothing granted at close');
-  await page.waitForTimeout(1500);
-  s = await st();
-  ok(s.coins === c4 + 100 && s.stats.late === 1, 'late onGive (2.5 s after close) → reward applied once');
-
-  // 9c. HS offline at boot → falls back to TikTok ads, game unaffected
-  await open('hsfake=1&hsoffline=1&fakeads=1');
-  s = await st();
-  ok(s.prov === 'tt' && s.state === 'READY', 'HS offline → provider falls back to tt, game runs');
-
-  // 10. No provider → ad buttons hidden, nothing breaks
-  await open('ads=none');
-  ok(await page.evaluate(() => MeowSort.ads().provider === 'none' && !MeowSort.ads().rewardReady('R4')), 'ads=none: rewarded buttons hidden');
+  ok(!s.hs && !await page.evaluate(() => MeowSort.ads().rewardReady('Gift Pod')) && s.state === 'READY', 'HS offline → game plays, ad buttons hidden');
 
   ok(errors.length === 0, 'no JS errors' + (errors.length ? ': ' + errors.slice(0, 3).join(' | ') : ''));
   console.log(failures ? failures + ' check(s) failed' : 'All ads checks passed');

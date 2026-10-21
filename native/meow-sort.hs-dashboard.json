@@ -1,0 +1,96 @@
+{
+  "iaa_config": {
+    "placements": [
+      {
+        "label": "Double Coin",
+        "ads": [
+          {
+            "id": "ad7698650662473091124"
+          }
+        ]
+      },
+      {
+        "label": "Rescue",
+        "ads": [
+          {
+            "id": "ad7698637186465449990"
+          }
+        ]
+      },
+      {
+        "label": "Shuffle",
+        "ads": [
+          {
+            "id": "ad7698651584901089286"
+          }
+        ]
+      },
+      {
+        "label": "Gift Pod",
+        "ads": [
+          {
+            "id": "ad7699031530672244737"
+          }
+        ]
+      },
+      {
+        "label": "Extra Bed",
+        "ads": [
+          {
+            "id": "ad7698637186465466374"
+          }
+        ]
+      },
+      {
+        "label": "Inter1",
+        "ads": [
+          {
+            "id": "ad7698663144210204678"
+          }
+        ]
+      }
+    ],
+    "rewards": {
+      "Double Coin": {
+        "coins": 50
+      },
+      "Shuffle": {
+        "shuffle": 1
+      },
+      "Extra Bed": {
+        "extra_bed": 1
+      },
+      "Rescue": {
+        "shuffle": 1,
+        "extra_bed": 1
+      },
+      "Gift Pod": {
+        "coins": 100
+      },
+      "share": {
+        "coins": 100,
+        "$limit": "daily"
+      },
+      "tiktok_shortcut": {
+        "coins": 250
+      },
+      "tiktok_profile": {
+        "coins": 200
+      }
+    },
+    "items": {
+      "coins": {
+        "category": "currency",
+        "name": "Coins"
+      },
+      "shuffle": {
+        "category": "booster",
+        "name": "Shuffle"
+      },
+      "extra_bed": {
+        "category": "booster",
+        "name": "Extra Bed"
+      }
+    }
+  }
+}

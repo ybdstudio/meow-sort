@@ -6,7 +6,8 @@
    - press handling: buttons fire on release inside the same button
      (buttonStart / buttonMove / buttonEnd); board taps fire on touch start. */
 var uiPanel = 'settings';
-var winDoubled = false;        // R1 taken on the current Level Complete panel
+var winDoubled = false;        // 'Double Coin' taken on the current Level Complete panel
+var winBonus = 0;              // coins that ad gave (from HS, never typed)
 var boostTaken = false;        // R5 taken for the current level
 var levelStartT = 0;           // Anim.time when the level was loaded (R5 chip shows for a few seconds)
 function bedCount() { return game.board.containers.filter(function (c) { return c.kind === 'bed'; }).length; }
@@ -16,7 +17,8 @@ var rewardPopup = null;          // { title, coins, t }
 function openPanel(name) { if (game.pause()) { uiPanel = name; devResult = null; } else if (game.state === S.PAUSED) uiPanel = name; }
 
 function drawOverlayPanel(g) {
-  if (uiPanel === 'rewards') drawRewardsPanel(g);
+  if (uiPanel.indexOf('pop_') === 0) drawMiniPopup(uiPanel);
+  else if (uiPanel === 'rewards') drawRewardsPanel(g);
   else if (uiPanel === 'rescue') drawRescuePanel(g);
   else drawSettings(g);
 }
@@ -47,28 +49,28 @@ function drawRescuePanel(g) {
   drawCatSprite('blue', 'sad', 270, y + 150, 1, 1, 0, 1, null, 96);
   text('Get +1 bed and +1 shuffle to keep going', x + w / 2, y + 178, 16, '#7a4410');
   var by = y + 204;
-  if (Ads.rewardReady('R3')) { adButton('rescue_ad', 'Rescue me', x + 60, by, w - 120, 60, ORANGE, 22); by += 74; }
+  if (Ads.rewardReady('Rescue')) { adButton('rescue_ad', 'Rescue me', x + 60, by, w - 120, 60, ORANGE, 22); by += 74; }
   if (g.history.length) { uiButton('rescue_undo', 'Undo last move', x + 90, by, w - 180, 46, BLUE, 18); by += 56; }
   uiButton('restart', 'Restart level', x + 90, by, w - 180, 46, GREY, 18);
 }
 function drawBoostChip() {
-  if (!ADS.rewarded.R5 || boostTaken || game.state !== S.READY || game.moves > 0) return;
-  if (game.levelIndex < ADS.rewarded.R5.minLevel || Anim.time - levelStartT > 12 || bedCount() >= 3) return;
-  if (!Ads.rewardReady('R5')) return;
+  if (!ADS.levelBoost || boostTaken || game.state !== S.READY || game.moves > 0) return;
+  if (game.levelIndex < ADS.levelBoost.minLevel || Anim.time - levelStartT > 12 || bedCount() >= 3) return;
+  if (!Ads.rewardReady(ADS.levelBoost.label)) return;
   var bob = Math.sin(Anim.time * 4) * 3;
   adButton('boost_ad', 'Start with +1 Bed', 150, 700 + bob, 240, 46, ORANGE, 17);
 }
 function drawPodBadge() {
-  if (!Ads.rewardReady('R4') && Ads.provider === 'none') return;
-  var p = PODS[2], cd = Ads.rewardCooldown('R4');
+  if (!Ads.rewardReady('Gift Pod') && Ads.provider === 'none') return;
+  var p = PODS[2], cd = Ads.rewardCooldown('Gift Pod');
   if (cd > 0) {
     ctx.fillStyle = 'rgba(30,20,70,0.75)'; rr(ctx, p.x - 26, p.y + 30, 52, 22, 11); ctx.fill();
     var s = Math.ceil(cd); text(Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2), p.x, p.y + 41, 13, '#ffffff');
-  } else if (Ads.rewardReady('R4')) {
+  } else if (Ads.rewardReady('Gift Pod')) {
     if (Math.sin(Anim.time * 5) > 0.6 && p.bounce < 0.2) p.bv += 2.5;          // gentle "tap me" hop
     ctx.fillStyle = 'rgb(255,214,64)'; rr(ctx, p.x - 30, p.y + 30, 60, 22, 11); ctx.fill();
     ctx.strokeStyle = '#b06a00'; ctx.lineWidth = 2; ctx.stroke();
-    text('+' + ADS.rewarded.R4.coins, p.x, p.y + 41, 14, '#7a3d00');
+    var gc = HS.amount('Gift Pod', 'coins'); if (gc) text('+' + gc, p.x, p.y + 41, 14, '#7a3d00');
   }
 }
 // "Ad break" notice before an interstitial + dim screen while an ad is up (device ads cover the screen anyway)
@@ -103,8 +105,8 @@ function drawRewardsPanel(g) {
   drawPanel(x, y, w, h, 'Free Coins');
   uiButton('close', '✕', x + w - 44, y + 18, 36, 36, ['#ff8a8a', '#d83a3a'], 18);
   var rows = Minis.rows();
-  if (Ads.provider !== 'none') rows.unshift({ id: 'gift', title: 'Watch a video', coins: ADS.rewarded.R4.coins, ad: true,
-    done: false, available: true, cta: Ads.rewardCooldown('R4') > 0 ? Math.ceil(Ads.rewardCooldown('R4')) + 's' : 'Watch' });
+  if (Ads.provider !== 'none') rows.unshift({ id: 'gift', title: 'Watch a video', coins: HS.amount('Gift Pod', 'coins'), ad: true,
+    done: false, available: true, cta: Ads.rewardCooldown('Gift Pod') > 0 ? Math.ceil(Ads.rewardCooldown('Gift Pod')) + 's' : 'Watch' });
   rows.forEach(function (row, i) {
     var ry = y + 62 + i * 112;
     ctx.fillStyle = 'rgba(255,255,255,0.55)'; rr(ctx, x + 22, ry, w - 44, 96, 20); ctx.fill();
@@ -116,7 +118,7 @@ function drawRewardsPanel(g) {
     if (row.done) {
       text(row.id === 'share' ? 'Come back tomorrow' : 'Claimed ✓', bx + bw / 2 - 6, by + 22, 14, '#2f8a3a');
     } else if (row.ad) {
-      if (Ads.rewardReady('R4')) adButton('gift_ad', row.cta, bx, by, bw, 42, ORANGE, 17); else uiButton('gift_ad', row.cta, bx, by, bw, 42, GREY, 17);
+      if (Ads.rewardReady('Gift Pod')) adButton('gift_ad', row.cta, bx, by, bw, 42, ORANGE, 17); else uiButton('gift_ad', row.cta, bx, by, bw, 42, GREY, 17);
     } else if (!row.available) {
       uiButton('na_' + row.id, 'Not here', bx, by, bw, 42, GREY, 15);
     } else {
@@ -155,19 +157,39 @@ function uiButtonsScaledAt(sc, cx, cy, fn) {
 }
 
 /* ---------- loading / error screens (before the game exists) ---------- */
+/* ---------- loading screen: designer art (ui/loading.jpg, main package) + live progress bar ---------- */
+var LOAD_IMG = null;
+function loadLoadingArt() {
+  Platform.loadImage(UI_ATLAS.loading.image, function (err, img) { if (!err) LOAD_IMG = img; else Platform.warn('loading art', err); });
+}
 function drawLoading(progress, label) {
   resizeIfNeeded();
   ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
-  var gr = ctx.createLinearGradient(0, 0, 0, view.H);
-  gr.addColorStop(0, '#2c5fd3'); gr.addColorStop(1, '#2a56c0');
-  ctx.fillStyle = gr; ctx.fillRect(0, 0, view.W, view.H);
-  setLogical();
-  ctx.fillStyle = 'rgba(160,200,255,0.25)'; pawPath(270, 380, 60); ctx.fill();
-  text(GAME_NAME, 270, 500, 46, '#ffffff', '#1d3f8f', 8);
-  ctx.fillStyle = 'rgba(10,30,90,0.45)'; rr(ctx, 120, 560, 300, 22, 11); ctx.fill();
-  ctx.fillStyle = lin(560, 582, ['#ffe96e', '#f2a20f']); rr(ctx, 122, 562, Math.max(18, 296 * clamp(progress, 0, 1)), 18, 9); ctx.fill();
-  text(label || 'Loading…', 270, 610, 17, 'rgba(255,255,255,0.9)');
-  text('v' + VERSION + ' · ' + BUILD, 270, 920, 13, 'rgba(255,255,255,0.6)');
+  var W = view.W, H = view.H, L = UI_ATLAS.loading;
+  if (!LOAD_IMG) {                                         // first frames, before the art decodes
+    ctx.fillStyle = '#4d8be8'; ctx.fillRect(0, 0, W, H);
+    return;
+  }
+  var s = Math.max(W / L.w, H / L.h), dx = (W - L.w * s) / 2, dy = (H - L.h * s) / 2;   // cover
+  ctx.drawImage(LOAD_IMG, 0, 0, L.w, L.h, dx, dy, L.w * s, L.h * s);
+  // progress bar in the art's own spot and style: white rim, navy track, blue fill, paw knob
+  var bx = dx + L.bar[0] * s, by = dy + L.bar[1] * s, bw = (L.bar[2] - L.bar[0]) * s, bh = (L.bar[3] - L.bar[1]) * s;
+  var p = clamp(progress, 0, 1), r = bh / 2;
+  ctx.fillStyle = 'rgba(60,40,20,0.25)'; rr(ctx, bx, by + bh * 0.16, bw, bh, r); ctx.fill();
+  ctx.fillStyle = '#ffffff'; rr(ctx, bx, by, bw, bh, r); ctx.fill();
+  var ins = bh * 0.14;
+  ctx.fillStyle = '#26418f'; rr(ctx, bx + ins, by + ins, bw - ins * 2, bh - ins * 2, r - ins); ctx.fill();
+  var fw = Math.max(bh - ins * 2, (bw - ins * 2) * p);
+  ctx.fillStyle = '#3aa7f5'; rr(ctx, bx + ins, by + ins, fw, bh - ins * 2, r - ins); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.45)'; rr(ctx, bx + ins + 6, by + ins + 3, Math.max(0, fw - 12), (bh - ins * 2) * 0.32, (bh - ins * 2) * 0.16); ctx.fill();
+  var kx = bx + ins + fw, ky = by + bh / 2, kr = bh * 0.72;
+  ctx.fillStyle = 'rgba(40,40,90,0.25)'; ctx.beginPath(); ctx.arc(kx, ky + 3, kr, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(kx, ky, kr, 0, Math.PI * 2); ctx.fill();
+  ctx.lineWidth = 2; ctx.strokeStyle = '#d6e2ff'; ctx.stroke();
+  ctx.fillStyle = '#ff86b8'; pawPath(kx, ky + kr * 0.05, kr * 0.62); ctx.fill();
+  // "Loading..." is part of the art; the build line sits small at the very bottom
+  ctx.font = '700 11px ' + FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(90,50,20,0.55)'; ctx.fillText('v' + VERSION + ' · ' + BUILD, W / 2, H - 14);
 }
 function drawFatal(msg) {
   try {
@@ -214,4 +236,84 @@ function buttonEnd(x, y) {
   pressed.id = id; pressed.t = Anim.time;        // short release animation
   var h = hitTest(x, y);
   if (h.type === 'button' && h.id === id) onButton(id);
+}
+
+/* ---------- TikTok minis: 3 buttons on the play screen + their 3 popups ----------
+   Art from assets_src/ui (cut by tools/prepare_ui.py into res/ui.png). Amounts are NOT baked:
+   they come from the HS reward table (HS.amount) so the dashboard can change them. */
+var UI_IMG = null, popT = 0;
+var MINI_BTNS = [
+  { id: 'mini_shortcut', frame: 'btn_shortcut', pop: 'pop_launch', x: 40,  y: 130, w: 68 },
+  { id: 'mini_profile',  frame: 'btn_profile',  pop: 'pop_entry',  x: 110, y: 130, w: 60 },
+  { id: 'mini_share',    frame: 'btn_share',    pop: 'pop_share',  x: 500, y: 130, w: 60 }
+];
+var MINI_POPS = {
+  pop_entry:  { title: 'Entry Reward',  key: 'tiktok_profile',  cta: 'Claim', colors: ['#ffe066', '#f7a600'], act: 'profile' },
+  pop_launch: { title: 'Launch Reward', key: 'tiktok_shortcut', cta: 'Go',    colors: ['#ffe066', '#f7a600'], act: 'shortcut' },
+  pop_share:  { title: 'Share Rewards', key: 'share',           cta: 'Share', colors: ['#8ff06b', '#2fae32'], act: 'share' }
+};
+function miniVisible(b) {
+  if (b.id === 'mini_shortcut') return HSMinis.supported('shortcut') && !HSMinis.done('shortcut');
+  if (b.id === 'mini_profile') return HSMinis.supported('profile') && !HSMinis.done('profile');
+  return HSMinis.canShare() && HSMinis.shareAvailable();        // back every day while the daily reward is open
+}
+function uiFrame(name) { return UI_ATLAS.frames[name]; }
+function drawMiniButtons(g) {
+  if (!UI_IMG || g.state === S.PAUSED || g.state === S.LEVEL_COMPLETE) return;
+  MINI_BTNS.forEach(function (b, i) {
+    if (!miniVisible(b)) return;
+    var f = uiFrame(b.frame), w = b.w, h = f.h * w / f.w;
+    var isP = pressed.id === b.id && Anim.time - pressed.t < 0.15;
+    var wob = Math.max(0, Math.sin(Anim.time * 2.2 - i * 0.9)); wob = wob > 0.96 ? Math.sin((wob - 0.96) * 80) * 0.06 : 0;   // a little "tap me" wiggle now and then
+    var sc = isP ? 0.92 : 1;
+    ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(wob); ctx.scale(sc, sc);
+    ctx.drawImage(UI_IMG, f.x, f.y, f.w, f.h, -w / 2, -h / 2, w, h);
+    ctx.restore();
+    uiButtons.push({ id: b.id, x: b.x - w / 2, y: b.y - h / 2, w: w, h: h });
+  });
+}
+function openMiniPopup(name) {
+  if (game.state === S.PAUSED) uiPanel = name; else if (game.pause()) uiPanel = name; else return;
+  popT = Anim.time;
+}
+function drawMiniPopup(name) {
+  var P = MINI_POPS[name], f = uiFrame(name); if (!P || !f || !UI_IMG) return;
+  ctx.fillStyle = 'rgba(10,20,50,0.6)'; ctx.fillRect(-300, -300, LW + 600, LH + 600);
+  var CW = 380, k = CW / f.w, ch = f.h * k, PW = CW + 44, HH = 76, CTA = 64;
+  var PH = HH + 12 + ch + 18 + CTA + 26, x0 = (LW - PW) / 2, y0 = Math.max(70, (LH - PH) / 2 + 10);
+  var t = clamp((Anim.time - popT) / 0.28, 0, 1), sc = easeOutBack(t);
+  ctx.save(); ctx.translate(LW / 2, y0 + PH / 2); ctx.scale(sc, sc); ctx.translate(-LW / 2, -(y0 + PH / 2));
+  // frame
+  ctx.fillStyle = 'rgba(20,10,30,0.35)'; rr(ctx, x0, y0 + 10, PW, PH, 30); ctx.fill();
+  ctx.fillStyle = '#5b2a14'; rr(ctx, x0, y0, PW, PH, 30); ctx.fill();
+  ctx.fillStyle = 'rgb(254,243,219)'; rr(ctx, x0 + 6, y0 + 6, PW - 12, PH - 12, 25); ctx.fill();
+  // pink header (the art's style)
+  ctx.fillStyle = '#f590a8'; rr(ctx, x0 + 6, y0 + 6, PW - 12, HH, 25); ctx.fill();
+  ctx.fillRect(x0 + 6, y0 + 6 + HH - 26, PW - 12, 26);
+  ctx.fillStyle = '#fbb6c6'; rr(ctx, x0 + 16, y0 + 12, PW - 32, 22, 11); ctx.fill();
+  text(P.title, LW / 2, y0 + 6 + HH / 2 + 2, 34, '#ffffff', '#a3264b', 7);
+  // illustration + live amount over the coin pile
+  var cx = x0 + 22, cy = y0 + 6 + HH + 12;
+  ctx.drawImage(UI_IMG, f.x, f.y, f.w, f.h, cx, cy, CW, ch);
+  var amt = HS.amount(P.key, 'coins');
+  if (amt) text('x' + amt, cx + f.amount[0] * k, cy + f.amount[1] * k, f.amountSize * k, '#ffffff', '#4a2208', Math.max(4, f.amountSize * k * 0.2));
+  ctx.restore();
+  // buttons (hit areas follow the same scale)
+  var scaled = function (fn) { uiButtonsScaledAt(sc, LW / 2, y0 + PH / 2, fn); };
+  ctx.save(); ctx.translate(LW / 2, y0 + PH / 2); ctx.scale(sc, sc); ctx.translate(-LW / 2, -(y0 + PH / 2));
+  scaled(function () {
+    uiButton('pop_cta', P.cta, LW / 2 - 140, cy + ch + 18, 280, CTA, P.colors, 30);
+    if (f.go) uiButtons.push({ id: 'pop_cta', x: cx + f.go[0] * k, y: cy + f.go[1] * k, w: (f.go[2] - f.go[0]) * k, h: (f.go[3] - f.go[1]) * k });   // the "Go" drawn in step 1
+    // round red close button on the corner, like the art
+    var bx = x0 + PW - 12, byy = y0 + 10, br = 27, isP = pressed.id === 'pop_close' && Anim.time - pressed.t < 0.15;
+    ctx.save(); ctx.translate(bx, byy); if (isP) ctx.scale(0.92, 0.92);
+    ctx.fillStyle = '#7a1020'; ctx.beginPath(); ctx.arc(0, 3, br, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(0, 0, br, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#ef3b4b'; ctx.beginPath(); ctx.arc(0, 0, br - 4, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 6; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-9, -9); ctx.lineTo(9, 9); ctx.moveTo(9, -9); ctx.lineTo(-9, 9); ctx.stroke();
+    ctx.restore();
+    uiButtons.push({ id: 'pop_close', x: bx - br - 4, y: byy - br - 4, w: (br + 4) * 2, h: (br + 4) * 2 });
+  });
+  ctx.restore();
 }

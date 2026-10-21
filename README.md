@@ -54,3 +54,13 @@ cd dist/meow-sort && ttmg dev      # DevTool → Upload → scan QR with a test 
   revisit mission +150, share +50 (3/day). Claim flags are saved, rewards never granted twice.
 - Save on every settled move, win, reward and onHide. Dev "verify levels" only with `?dev=1` / `--debug`.
 - Ads: `ADS` in js/config.js is a dummy (enabled:false) — next step is the integrate-hs-sdk-ads skill.
+
+## v0.3 — HS kit + TikTok minis UI
+- HS kit (hs-tiktok-sdk 1.0.7 / hs-game.js 3.0.0) in `native/hs/`, shipped next to game.js. Integration per
+  `docs/hs-kit/INTEGRATE-WITH-AI.md`: `HSGame.showAd('<dashboard label>')`, rewards only in `hsOnGive`
+  (`native/src/hs_native.js`), missions/share via `HSGame`, cloud save via `HSGame.save`/`onLoad`.
+- Credentials: `native/hs-config.json` (gitignored) → `{ gameId: <TikTok App ID>, sdkKey }`.
+- Dashboard: build writes `dist/meow-sort.hs-dashboard.json` (paste `iaa_config` into HS → Ads Config → Edit raw JSON).
+- Check: `node tools/hs/hs-check.mjs dist/meow-sort` · tests: `node tools/test_emulator.js && node tools/test_ads.js`.
+- UI art: `assets_src/ui/` → `python3 -I tools/prepare_ui.py` → `native/project/ui/loading.jpg`, `native/project/res/ui.png`, `js/ui_atlas.js`.
+- Economy: level 50 · Double Coin +50 · Gift Pod +100 (45 s cooldown) · Share +100/day · Add to screen +250 once · Revisit +200 once.

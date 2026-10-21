@@ -573,12 +573,12 @@ function drawWin(game) {
     if (st > 0) { ctx.save(); ctx.translate(x + w / 2 + (i - 1) * 78, y + 92 - (i === 1 ? 14 : 0)); var s2 = easeOutBack(st); ctx.scale(s2, s2); drawStar(0, 0, i === 1 ? 36 : 30); ctx.restore(); }
   }
   text('Groups sorted: ' + game.stars, x + w / 2, y + 160, 19, '#5b2d0b');
-  text('Moves: ' + game.moves + '   Coins +' + CORE.CONFIG.coinsPerLevel * (winDoubled ? 2 : 1), x + w / 2, y + 190, 17, '#7a4410');
+  text('Moves: ' + game.moves + '   Coins +' + (CORE.CONFIG.coinsPerLevel + winBonus), x + w / 2, y + 190, 17, '#7a4410');
   ctx.restore();
   ctx.save(); ctx.globalAlpha = a; ctx.translate(270, 480); ctx.scale(sc, sc); ctx.translate(-270, -480);
   uiButtonsScaled(sc, function () {
     if (winDoubled) uiButton('ad_done', 'Coins doubled ✓', x + 60, y + 222, 260, 56, GREY, 19);
-    else if (Ads.rewardReady('R1')) adButton('ad_double', 'x2 Coins', x + 60, y + 222, 260, 56, ORANGE, 22);
+    else if (Ads.rewardReady('Double Coin')) adButton('ad_double', 'x2 Coins', x + 60, y + 222, 260, 56, ORANGE, 22);
     uiButton('next', 'Next Level', x + 60, y + 290, 260, 58, GREEN, 22);
     uiButton('replay', 'Replay', x + 110, y + 362, 160, 44, BLUE, 17);
   });
@@ -655,11 +655,12 @@ function render() {
   drawForeground(-view.offX / view.scale);
   var pid = pressed.id && Anim.time - pressed.t < 0.15 ? pressed.id : null;
   drawBooster(BTN.undo, drawIconUndo, 'Free', game.canUndo() || game.state === S.MOVING && game.history.length > 0, pid === 'undo');
-  var adR2 = Ads.rewardReady('R2');
-  drawBooster(BTN.shuffle, drawIconShuffle, game.boosters.shuffle > 0 ? 'Free' : (adR2 ? '▶ Ad' : 'Used'), game.boosters.shuffle > 0 || adR2, pid === 'shuffle');
-  drawBooster(BTN.bed, drawIconBed, beds.length >= 3 ? 'Max' : (game.boosters.bed > 0 ? 'Free' : (adR2 ? '▶ Ad' : 'Used')), beds.length < 3 && (game.boosters.bed > 0 || adR2), pid === 'bed');
+  var adSh = Ads.rewardReady('Shuffle'), adBed = Ads.rewardReady('Extra Bed');
+  drawBooster(BTN.shuffle, drawIconShuffle, game.boosters.shuffle > 0 ? 'Free' : (adSh ? '▶ Ad' : 'Used'), game.boosters.shuffle > 0 || adSh, pid === 'shuffle');
+  drawBooster(BTN.bed, drawIconBed, beds.length >= 3 ? 'Max' : (game.boosters.bed > 0 ? 'Free' : (adBed ? '▶ Ad' : 'Used')), beds.length < 3 && (game.boosters.bed > 0 || adBed), pid === 'bed');
   drawSettingsBtn(pid === 'settings');
   drawHint(game);
+  drawMiniButtons(game);
   drawBoostChip();
   drawPodBadge();
   if (game.state === S.PAUSED) drawOverlayPanel(game);

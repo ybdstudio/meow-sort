@@ -29,34 +29,37 @@ var Platform = (function () {
   function warn() { try { console.warn.apply(console, ['[MeowSort]'].concat([].slice.call(arguments))); } catch (e) {} }
 
   /* ---------- system / safe area ---------- */
+  // Hosts can return odd things (proxies, functions, strings): only trust plain objects / finite numbers.
+  function obj(x) { return x && typeof x === 'object' ? x : null; }
+  function num() { for (var i = 0; i < arguments.length; i++) { var v = arguments[i]; if (typeof v === 'number' && isFinite(v) && v > 0) return v; } return 0; }
   function sysInfo() {
     var s = null, w = null;
-    try { var f = fn('getWindowInfo'); if (f) w = f(); } catch (e) {}
-    try { var g = fn('getSystemInfoSync'); if (g) s = g(); } catch (e) {}
+    try { var f = fn('getWindowInfo'); if (f) w = obj(f()); } catch (e) {}
+    try { var g = fn('getSystemInfoSync'); if (g) s = obj(g()); } catch (e) {}
     s = s || {}; w = w || {};
-    var W = w.windowWidth || s.windowWidth || w.screenWidth || s.screenWidth || (G.innerWidth) || 375;
-    var H = w.windowHeight || s.windowHeight || w.screenHeight || s.screenHeight || (G.innerHeight) || 667;
-    var dpr = w.pixelRatio || s.pixelRatio || s.devicePixelRatio || G.devicePixelRatio || 2;
+    var W = num(w.windowWidth, s.windowWidth, w.screenWidth, s.screenWidth, G.innerWidth) || 375;
+    var H = num(w.windowHeight, s.windowHeight, w.screenHeight, s.screenHeight, G.innerHeight) || 667;
+    var dpr = num(w.pixelRatio, s.pixelRatio, s.devicePixelRatio, G.devicePixelRatio) || 2;
     // Normalise safeArea: some devices omit it, some report it in screen (not window) space,
     // some only give statusBarHeight. Insets are clamped to sane ranges.
-    var sa = w.safeArea || s.safeArea, top = 0, bottom = 0, left = 0, right = 0;
+    var sa = obj(w.safeArea) || obj(s.safeArea), top = 0, bottom = 0, left = 0, right = 0;
     if (sa && typeof sa.top === 'number') {
       top = sa.top;
-      var saBottom = typeof sa.bottom === 'number' ? sa.bottom : (sa.height ? sa.top + sa.height : H);
+      var saBottom = typeof sa.bottom === 'number' ? sa.bottom : (typeof sa.height === 'number' ? sa.top + sa.height : H);
       bottom = Math.max(0, H - saBottom);
-      left = sa.left || 0; right = typeof sa.right === 'number' && sa.right > 0 ? Math.max(0, W - sa.right) : 0;
+      left = num(sa.left); right = typeof sa.right === 'number' && sa.right > 0 ? Math.max(0, W - sa.right) : 0;
     } else {
-      top = w.statusBarHeight || s.statusBarHeight || 0;
+      top = num(w.statusBarHeight, s.statusBarHeight);
     }
     // TikTok overlays its capsule menu (… / ✕) at the top-right; keep the HUD below it.
     try {
-      var mb = fn('getMenuButtonBoundingClientRect'); var r = mb && mb();
-      if (r && r.bottom > 0 && r.bottom < H * 0.25) top = Math.max(top, r.bottom + 4);
+      var mb = fn('getMenuButtonBoundingClientRect'); var r = mb && obj(mb());
+      if (r && typeof r.bottom === 'number' && r.bottom > 0 && r.bottom < H * 0.25) top = Math.max(top, r.bottom + 4);
     } catch (e) {}
     top = clampN(top, 0, H * 0.2); bottom = clampN(bottom, 0, H * 0.15);
     left = clampN(left, 0, W * 0.1); right = clampN(right, 0, W * 0.1);
     return { W: W, H: H, dpr: Math.min(dpr, 3), safe: { t: top, b: bottom, l: left, r: right },
-             platform: s.platform || '', sdk: s.SDKVersion || '', system: s.system || '' };
+             platform: typeof s.platform === 'string' ? s.platform : '', sdk: typeof s.SDKVersion === 'string' ? s.SDKVersion : '', system: typeof s.system === 'string' ? s.system : '' };
   }
   function clampN(v, a, b) { v = +v || 0; return v < a ? a : v > b ? b : v; }
 

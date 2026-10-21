@@ -35,6 +35,7 @@ const MODULES = [
   'js/ads_policy.js',
   'js/levels_gen.js',
   'js/cat_atlas.js',
+  'js/ui_atlas.js',
   'js/game.js',
   'js/layout.js',
   'js/art.js',
@@ -48,9 +49,8 @@ const MODULES = [
   'js/render.js',
   'native/src/ui_native.js',
   'js/input.js',
-  'native/src/minis_native.js',
-  'native/src/hs_native.js',  // HyperScale SDK bridge (inactive unless hs/hs-game.js is shipped)
-  'native/src/ads_native.js',  // ad manager (after policy + hs bridge)
+  'native/src/hs_native.js',  // HS kit: require('./hs-game.js'), reward table, onGive/onLoad (HS_CONFIG injected before it)
+  'native/src/ads_native.js',  // ad timing + UI flow on top of HSGame.showAd
   'js/loop.js',
   'js/devapi.js',
   'native/src/main_native.js' // boot (must be last)
@@ -87,6 +87,36 @@ const kb = n => (n / 1024).toFixed(1) + ' KB';
   code = code.replace("var BUILD = 'dev';", "var BUILD = '" + stamp + "';");
   if (DEBUG) code = code.replace("debug: query.dev === '1' || query.debug === '1'", 'debug: true');
 
+  // ---- HS kit: credentials, reward table, dashboard JSON ----
+  // native/hs-config.json (gitignored): { gameId: <TikTok App ID>, sdkKey: "sk_live_..." }.
+  // Per the HS kit, gameId + sdkKey live in game.js (they identify the game; NOT secrets).
+  // The TikTok Client Secret never goes anywhere near the build.
+  const HS_CFG = path.join(ROOT, 'native/hs-config.json');
+  const hc = fs.existsSync(HS_CFG) ? JSON.parse(fs.readFileSync(HS_CFG, 'utf8')) : {};
+  if (opt('hs-key', null) && opt('hs-key') !== true) hc.sdkKey = opt('hs-key');
+  if (opt('hs-game', null) && opt('hs-game') !== true) hc.gameId = opt('hs-game');
+  if (/client_?secret/i.test(JSON.stringify(hc))) { console.error('  ERROR: native/hs-config.json must not contain the Client Secret'); process.exit(5); }
+  const hsCfgLine = 'var HS_CONFIG = ' + JSON.stringify({ gameId: String(hc.gameId || ''), sdkKey: String(hc.sdkKey || '') }) + ';\n';
+  code = code.replace('/* ---- native/src/hs_native.js ---- */\n', '/* ---- HS_CONFIG (from native/hs-config.json) ---- */\n' + hsCfgLine + '/* ---- native/src/hs_native.js ---- */\n');
+  if (!hc.gameId || !hc.sdkKey) console.warn('  WARNING: native/hs-config.json has no gameId/sdkKey — HS runs offline (defaults only, no ads)');
+
+  // Dashboard JSON for HS (written NEXT TO the package, never inside it):
+  //   placements = native/hs-dashboard.json (the HS dashboard export: labels + ad unit ids)
+  //   rewards/items = HS_DEFAULTS in native/src/hs_native.js (the game's own reward table)
+  const vm = require('vm');
+  const hsSrc = fs.readFileSync(path.join(ROOT, 'native/src/hs_native.js'), 'utf8');
+  const defSrc = hsSrc.slice(hsSrc.indexOf('var HS_DEFAULTS ='), hsSrc.indexOf('\n};\n', hsSrc.indexOf('var HS_DEFAULTS =')) + 4);
+  const sbx = {}; vm.createContext(sbx); vm.runInContext(defSrc + '\nthis.D = HS_DEFAULTS;' + fs.readFileSync(path.join(ROOT, 'js/config.js'), 'utf8') + '\nthis.ADS = ADS;', sbx);
+  const DEFAULTS = JSON.parse(JSON.stringify(sbx.D)), A = sbx.ADS;
+  const DASH_EXPORT = path.join(ROOT, 'native/hs-dashboard.json');
+  const placements = fs.existsSync(DASH_EXPORT) ? JSON.parse(fs.readFileSync(DASH_EXPORT, 'utf8')).placements : [];
+  const used = Object.keys(A.rewarded).concat([A.inter.label]), bad = [];
+  used.forEach(l => { if (!placements.some(p => p.label === l)) bad.push('the game shows ads at "' + l + '" but the dashboard has no such placement'); });
+  placements.forEach(p => { if (used.indexOf(p.label) < 0) bad.push('dashboard placement "' + p.label + '" is never used by the game'); });
+  Object.keys(A.rewarded).forEach(l => { if (!DEFAULTS.rewards[l]) bad.push('rewarded placement "' + l + '" has no reward in HS_DEFAULTS'); });
+  if (bad.length) { console.error('  ERROR placements:\n   - ' + bad.join('\n   - ')); process.exit(6); }
+  const dashOut = { iaa_config: { placements: placements, rewards: DEFAULTS.rewards, items: DEFAULTS.items } };
+
   // Syntax check before anything else
   try { new Function(code); } catch (e) { console.error('Syntax error in bundle:', e.message); process.exit(1); }
 
@@ -109,23 +139,17 @@ const kb = n => (n / 1024).toFixed(1) + ' KB';
   copyDir(path.join(ROOT, 'native/project/res'), path.join(PKG, 'res'));
   if (fs.existsSync(path.join(ROOT, 'native/project/ui'))) copyDir(path.join(ROOT, 'native/project/ui'), path.join(PKG, 'ui'));
 
-  // HS SDK: native/hs/*.js (from HyperScale) → package hs/ ; native/hs-config.json (gitignored, holds the SDK key)
-  // → package hs-config.js. The key never goes into game.js. Without the SDK files neither is shipped.
-  const HS_DIR = path.join(ROOT, 'native/hs'), HS_CFG = path.join(ROOT, 'native/hs-config.json');
-  const hsSdk = fs.existsSync(path.join(HS_DIR, 'hs-game.js'));
-  let hsNote = 'not shipped (no native/hs/hs-game.js)';
-  if (hsSdk) {
-    copyDir(HS_DIR, path.join(PKG, 'hs'));
-    if (!fs.existsSync(HS_CFG)) { console.error('  ERROR: native/hs/hs-game.js found but native/hs-config.json is missing'); process.exit(4); }
-    const hc = JSON.parse(fs.readFileSync(HS_CFG, 'utf8'));
-    if (opt('hs-key', null) && opt('hs-key') !== true) hc.sdkKey = opt('hs-key');
-    if (opt('hs-game', null) && opt('hs-game') !== true) hc.gameId = opt('hs-game');
-    if (opt('hs-test', false)) hc.testMode = true;
-    const pub = Object.assign({}, hc); delete pub._comment;
-    fs.writeFileSync(path.join(PKG, 'hs-config.js'), '/* generated by tools/build_native.js from native/hs-config.json */\nmodule.exports = ' + JSON.stringify(pub, null, 2) + ';\n');
-    hsNote = 'shipped (gameId ' + hc.gameId + (hc.testMode ? ', TEST MODE' : '') + ')';
-  }
-  if (/sk_live_[0-9a-f]{16,}/.test(code)) { console.error('  ERROR: an HS SDK key ended up inside game.js'); process.exit(5); }
+  // HS kit files next to game.js (never edited)
+  const hsFiles = ['hs-game.js', 'hs-tiktok-sdk.min.js'];
+  const hsSdk = hsFiles.every(f => fs.existsSync(path.join(ROOT, 'native/hs', f)));
+  if (hsSdk) hsFiles.forEach(f => fs.copyFileSync(path.join(ROOT, 'native/hs', f), path.join(PKG, f)));
+  else console.warn('  WARNING: native/hs/hs-game.js + hs-tiktok-sdk.min.js missing — no ads, no cloud save');
+  const sdkVer = hsSdk ? ((/v(\d+\.\d+\.\d+)/.exec(fs.readFileSync(path.join(ROOT, 'native/hs/hs-tiktok-sdk.min.js'), 'utf8').slice(0, 200)) || [])[1] || '?') : '-';
+  const kitVer = hsSdk ? ((/hs-game\.js (\d+\.\d+\.\d+)/.exec(fs.readFileSync(path.join(ROOT, 'native/hs/hs-game.js'), 'utf8').slice(0, 200)) || [])[1] || '?') : '-';
+  const hsNote = hsSdk ? 'hs-game.js ' + kitVer + ' + hs-tiktok-sdk ' + sdkVer + ' · gameId ' + (hc.gameId || '-') + ' · ' + placements.length + ' placements' : 'not shipped';
+  const DASH_OUT = path.join(OUT, 'meow-sort.hs-dashboard.json');
+  fs.writeFileSync(DASH_OUT, JSON.stringify(dashOut, null, 2) + '\n');
+  fs.writeFileSync(path.join(ROOT, 'native/meow-sort.hs-dashboard.json'), JSON.stringify(dashOut, null, 2) + '\n');
 
   // Emulator
   const EMU = path.join(OUT, 'emulator');
@@ -145,7 +169,8 @@ const kb = n => (n / 1024).toFixed(1) + ' KB';
   console.log('  subpackages    ' + kb(sub));
   console.log('  total          ' + kb(total) + ' / 30720 KB ' + (total < LIMIT_TOTAL ? 'OK' : 'TOO BIG'));
   console.log('  appid          ' + pc.appid);
-  console.log('  HS SDK         ' + hsNote);
+  console.log('  HS kit         ' + hsNote);
+  console.log('  HS dashboard   ' + path.relative(ROOT, DASH_OUT) + '  (paste iaa_config into HS → Ads Config → Edit raw JSON)');
   console.log('Emulator → ' + path.relative(ROOT, path.join(EMU, 'index.html')) + '   (serve ' + path.relative(ROOT, OUT) + '/ over http)');
   if (main >= LIMIT_MAIN || total >= LIMIT_TOTAL) process.exit(2);
 

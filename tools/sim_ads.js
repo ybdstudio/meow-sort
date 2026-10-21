@@ -50,21 +50,21 @@ function session(seed) {
   while (t < HORIZON) {
     const lt = rnd(r, ...at(PLAYER.levelTime, level)), m = at(PLAYER.matches, level);
     let stuckHandled = false;
-    if (level >= (ADS.rewarded.R5 ? ADS.rewarded.R5.minLevel : 99)) reward('R5', PLAYER.p_R5);
+    if (ADS.levelBoost && level >= ADS.levelBoost.minLevel) reward(ADS.levelBoost.label, PLAYER.p_R5);
     for (let k = 1; k <= m && t < HORIZON; k++) {
       t += lt / m;
-      if (r() < at(PLAYER.p_needBooster, level) / m) reward('R2', PLAYER.p_R2);
+      if (r() < at(PLAYER.p_needBooster, level) / m) reward(r() < 0.5 ? 'Shuffle' : 'Extra Bed', PLAYER.p_R2);
       if (!stuckHandled && k === m - 1 && r() < at(PLAYER.p_stuck, level)) {
         stuckHandled = true;
-        if (!reward('R3', PLAYER.p_R3)) { inter('I_restart'); t += lt * 0.6; }   // replays part of the level
+        if (!reward('Rescue', PLAYER.p_R3)) { inter('I_restart'); t += lt * 0.6; }   // replays part of the level
       }
       if (k < m) inter('I_break');
-      if (t - podCheck >= 60) { podCheck = t; reward('R4', PLAYER.p_R4_per_min); }
+      if (t - podCheck >= 60) { podCheck = t; reward('Gift Pod', PLAYER.p_R4_per_min); }
     }
     if (t >= HORIZON) break;
     if (r() < PLAYER.p_panel) { t += 4; inter('I_panel'); }
     t += rnd(r, ...PLAYER.winDwell);
-    reward('R1', PLAYER.p_R1);
+    reward('Double Coin', PLAYER.p_R1);
     inter('I_next');
     level++;
   }

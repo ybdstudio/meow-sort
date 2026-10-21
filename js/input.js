@@ -87,44 +87,48 @@ function onButton(id) {
   if (id === 'shuffle') {
     if (game.boosters.shuffle > 0) { game.shuffle(); return; }
     if (!game.inputOpen()) return;
-    if (!Ads.rewardReady('R2')) { fx.toast('Shuffle already used'); return; }
-    Ads.reward('R2', function () { game.boosters.shuffle++; if (!game.shuffle()) fx.toast('Shuffle saved for later'); });
+    if (!Ads.rewardReady('Shuffle')) { fx.toast('Shuffle already used'); return; }
+    Ads.reward('Shuffle', function () { if (!game.shuffle()) fx.toast('Shuffle saved for later'); });   // +1 shuffle came via hsOnGive
     return;
   }
   if (id === 'bed') {
     if (bedCount() >= 3) { fx.toast('All beds are out'); return; }
     if (game.boosters.bed > 0) { game.addBed(); return; }
     if (!game.inputOpen()) return;
-    if (!Ads.rewardReady('R2')) { fx.toast('Extra bed already used'); return; }
-    Ads.reward('R2', function () { game.boosters.bed++; game.addBed(); });
+    if (!Ads.rewardReady('Extra Bed')) { fx.toast('Extra bed already used'); return; }
+    Ads.reward('Extra Bed', function () { game.addBed(); });                                         // +1 bed came via hsOnGive
     return;
   }
   if (id === 'ad_double') {
     if (winDoubled) return;
-    Ads.reward('R1', function () { winDoubled = true; game.coins += CORE.CONFIG.coinsPerLevel; fx.rewardPopup('Double Coins!', CORE.CONFIG.coinsPerLevel); saveProgress(); });
+    Ads.reward('Double Coin', function (r) { winDoubled = true; winBonus = r.coins || 0; if (winBonus) fx.rewardPopup('Double Coins!', winBonus); });
     return;
   }
   if (id === 'pod_video' || id === 'gift_ad') {
-    var R4 = ADS.rewarded.R4;
-    if (!Ads.rewardReady('R4')) { var cd = Ads.rewardCooldown('R4'); fx.toast(cd > 0 ? 'Next gift in ' + Math.ceil(cd) + 's' : 'No video available right now'); return; }
-    Ads.reward('R4', function () { game.coins += R4.coins; Anim.coinPillBounce = 1; Sound.coin(); fx.rewardPopup('Gift Pod!', R4.coins); saveProgress(); });
+    if (!Ads.rewardReady('Gift Pod')) { var cd = Ads.rewardCooldown('Gift Pod'); fx.toast(cd > 0 ? 'Next gift in ' + Math.ceil(cd) + 's' : 'No video available right now'); return; }
+    Ads.reward('Gift Pod', function (r) { if (r.coins) fx.rewardPopup('Gift Pod!', r.coins); });
     return;
   }
   if (id === 'boost_ad') {
-    Ads.reward('R5', function () { boostTaken = true; game.boosters.bed++; game.addBed(); fx.toast('Extra bed ready!'); });
+    Ads.reward(ADS.levelBoost.label, function () { boostTaken = true; game.addBed(); fx.toast('Extra bed ready!'); });
     return;
   }
   if (id === 'rescue_ad') {
-    Ads.reward('R3', function () {
+    Ads.reward('Rescue', function () {                 // +1 shuffle +1 bed came via hsOnGive
       game.resume(); uiPanel = 'settings';
-      game.boosters.shuffle++; game.boosters.bed++;
       if (bedCount() < 3) game.addBed();
       fx.toast('Rescued! +1 bed and +1 shuffle', 2.2);
     });
     return;
   }
   if (id === 'rescue_undo') { game.resume(); uiPanel = 'settings'; game.undoMove(); return; }
-  if (id === 'close' || id === 'resume') { var wasPanel = uiPanel; game.resume(); uiPanel = 'settings'; if (wasPanel !== 'rescue') Ads.tryInter('I_panel'); return; }
+  if (id === 'close' || id === 'resume') { var wasPanel = uiPanel; game.resume(); uiPanel = 'settings'; if (wasPanel === 'settings' || wasPanel === 'rewards') Ads.tryInter('I_panel'); return; }
+  if (id === 'mini_shortcut' || id === 'mini_profile' || id === 'mini_share') {
+    for (var mi = 0; mi < MINI_BTNS.length; mi++) if (MINI_BTNS[mi].id === id) openMiniPopup(MINI_BTNS[mi].pop);
+    return;
+  }
+  if (id === 'pop_close') { game.resume(); uiPanel = 'settings'; return; }
+  if (id === 'pop_cta') { var mp = MINI_POPS[uiPanel]; if (mp) Minis.act(mp.act); return; }
   if (id === 'restart') { uiPanel = 'settings'; Ads.tryInter('I_restart', function () { game.restartLevel(); }); return; }
   if (id === 'sound') { Sound.on = !Sound.on; saveProgress(); return; }
   if (id === 'gfx') { gfxFlat = !gfxFlat; Platform.setFlatGraphics(gfxFlat); saveProgress(); return; }

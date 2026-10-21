@@ -7,11 +7,11 @@ Toàn bộ thông số nằm trong `ADS` ở `js/config.js`; logic thời gian n
 
 | Label | Loại | Vị trí trong game | Người chơi nhận | Giới hạn |
 |---|---|---|---|---|
-| **R1** Double Coins | Rewarded | Nút "▶ x2 Coins" trên bảng Level Complete | +50 coins (gấp đôi thưởng level) | 1 lần mỗi level; đã xem R1 thì bấm Next không hiện inter |
-| **R2** Booster Refill | Rewarded | Nút Shuffle hoặc Extra Bed sau khi hết lượt free (nhãn "▶ Ad") | +1 lượt, dùng ngay | Không giới hạn |
-| **R3** Rescue | Rewarded | Popup "Out of moves!" (mở sau 1,2 giây khi hết nước đi) | +1 bed, +1 shuffle | Popup còn có Undo và Restart |
-| **R4** Gift Pod | Rewarded | Pod video treo trên HUD (nảy khi sẵn sàng) và hàng "Watch a video" trong Free Coins | +100 coins | Cooldown 45 giây, có đồng hồ đếm ngược dưới pod |
-| **R5** Level Boost | Rewarded | Nút "▶ Start with +1 Bed" ở đầu level (từ level 3), hiện tối đa 12 giây trước nước đi đầu tiên | +1 bed | 1 lần mỗi level |
+| **Double Coin** | Rewarded | Nút "▶ x2 Coins" trên bảng Level Complete | +50 coins (gấp đôi thưởng level) | 1 lần mỗi level; đã xem Double Coin thì bấm Next không hiện inter |
+| **Shuffle** / **Extra Bed** | Rewarded | Nút Shuffle hoặc Extra Bed sau khi hết lượt free (nhãn "▶ Ad") | +1 lượt, dùng ngay | Không giới hạn |
+| **Rescue** | Rewarded | Popup "Out of moves!" (mở sau 1,2 giây khi hết nước đi) | +1 bed, +1 shuffle | Popup còn có Undo và Restart |
+| **Gift Pod** | Rewarded | Pod video treo trên HUD (nảy khi sẵn sàng) và hàng "Watch a video" trong Free Coins | +100 coins | Cooldown 45 giây, có đồng hồ đếm ngược dưới pod |
+| **Extra Bed** (level boost) | Rewarded | Nút "▶ Start with +1 Bed" ở đầu level (từ level 3), hiện tối đa 12 giây trước nước đi đầu tiên | +1 bed | 1 lần mỗi level |
 | **Inter1** | Interstitial | Chỉ ở điểm nghỉ tự nhiên, luôn hiện "Ad break" 1,2 giây trước | | Xem bảng dưới |
 
 ### Điểm kích hoạt interstitial (profile `ipu8`)
@@ -67,8 +67,10 @@ Khi có analytics thật, cập nhật các số này rồi chạy lại mô ph�
   4. cooldown của R4
   5. bật hoặc tắt từng trigger
 
-## Nguồn quảng cáo (`ADS.provider = 'auto'`)
+## Tích hợp HS (kit hs-tiktok-sdk 1.0.7, hs-game.js 3.0.0)
 
-1. **HS (HyperScale)**: dùng khi gói có `hs/hs-game.js` và `hs-config.js` (sinh từ `native/hs-config.json`, file này không commit vào git).
-2. **TikTok trực tiếp**: `createRewardedVideoAd` / `createInterstitialAd`, cần `ADS.adUnitIds`.
-3. **Không có nguồn nào**: nút rewarded tự ẩn, interstitial bỏ qua, game vẫn chơi bình thường.
+- Game chỉ gọi `HSGame.showAd('<label>')` với đúng label trên HS dashboard: `Double Coin`, `Shuffle`, `Extra Bed`, `Rescue`, `Gift Pod`, `Inter1`. Ad unit nào được phát (waterfall, cooldown, bật/tắt) do dashboard quyết định.
+- Phần thưởng chỉ được cộng trong `onGive` (`native/src/hs_native.js`), theo bảng `HS_DEFAULTS`, hoặc theo dashboard khi online. Interstitial `Inter1` không có thưởng.
+- Nhiệm vụ TikTok (thêm vào màn hình chính, quay lại từ profile) và share đều đi qua `HSGame.tiktokMission` / `HSGame.share`. Cloud save dùng `HSGame.save` / `onLoad`.
+- `dist/meow-sort.hs-dashboard.json` (sinh khi build): dán phần `iaa_config` vào HS → Ads Config → Edit raw JSON.
+- Kiểm tra: `node tools/hs/hs-check.mjs dist/meow-sort` (0 fail) và `node tools/test_ads.js`.

@@ -26,7 +26,7 @@
   #sheet .row { display: flex; gap: 10px; }
   #sheet button { flex: 1; padding: 11px; border-radius: 10px; border: 0; font: 600 15px system-ui; }
   #sheet .ok { background: #fe2c55; color: #fff; } #sheet .no { background: #eee; }
-  #log { position: fixed; right: 8px; bottom: 8px; width: 320px; max-height: 38vh; overflow: auto; font: 11px ui-monospace, monospace; color: #9c9;
+  #log { position: fixed; right: 8px; bottom: 8px; width: 320px; max-height: 38vh; overflow: auto; pointer-events: none; opacity: .85; font: 11px ui-monospace, monospace; color: #9c9;
          background: rgba(0,0,0,.55); border-radius: 8px; padding: 6px 8px; z-index: 6; }
   #log .w { color: #fc6; } #log .e { color: #f77; }
   @media (max-width: 600px) { #bar, #log { display: none; } #stage { top: 0; } #phone { border-radius: 0; box-shadow: none; } }
@@ -229,33 +229,12 @@
   }
 
   /* ---- CommonJS require() shim (TikTok runtime has require; the browser does not) ----
-     ./hs-config.js and ./hs/*.js are loaded from the package folder synchronously.
-     ?hsfake=1 serves a fake HS SDK (API as assumed in native/src/hs_native.js). */
+     game.js does require('./hs-game.js'), which requires './hs-tiktok-sdk.min.js' — both loaded
+     from the package folder synchronously, like the TikTok runtime. */
   var modCache = {};
   window.require = function (p) {
     var key = p.replace(/^\.\//, '');
     if (modCache[key]) return modCache[key].exports;
-    if (Q.hsfake === '1' && key === 'hs/hs-game.js') {
-      var give = [];
-      modCache[key] = { exports: {
-        init: function (c) { if (Q.hsoffline === '1') { console.log('[emu] fake HS offline'); throw new Error('HS backend unreachable'); } console.log('[emu] fake HS init', c.gameId, c.testMode ? 'test' : 'live'); },
-        canShowAd: function (place) { return Q.adfill !== '0'; },
-        onGive: function (f) { give.push(f); },
-        showAd: function (place, cb) {
-          var kind = /^Inter/.test(place) ? 'it' : 'rv';
-          return new Promise(function (res, rej) {
-            if (Q.adfill === '0') { rej({ errMsg: 'no fill' }); return; }
-            adShow(kind, function (ended) {
-              var g = function () { give.forEach(function (f) { f({ place: place, item: { category: 'ad_effect' } }); }); };
-              if (kind === 'rv' && ended) { if (Q.hsgivedelay) setTimeout(g, +Q.hsgivedelay); else g(); }
-              res({ isEnded: ended });
-            });
-          });
-        }
-      } };
-      return modCache[key].exports;
-    }
-    if (Q.hsfake === '1' && key === 'hs-config.js') { modCache[key] = { exports: { gameId: 'emu-game', sdkKey: 'sk_test_emu', testMode: true, places: {} } }; return modCache[key].exports; }
     if (!window.__pkgFiles) {
       try { var lx = new XMLHttpRequest(); lx.open('GET', '../emulator/pkgfiles.json', false); lx.send(); window.__pkgFiles = lx.status === 200 ? JSON.parse(lx.responseText) : []; } catch (e) { window.__pkgFiles = []; }
     }
@@ -266,6 +245,35 @@
     (new Function('module', 'exports', 'require', xhr.responseText))(mod, mod.exports, window.require);
     return mod.exports;
   };
+
+  /* ---- fake HS backend (games.wafflescouts.com) over tt.request, like the kit's hs-check ----
+     Serves ../meow-sort.hs-dashboard.json as the live dashboard (iaa_config).
+     ?hsoffline=1 → every request fails (HS unreachable: game must still play, ads off). */
+  var HSB = { dash: null, profile: null };
+  try { var dx = new XMLHttpRequest(); dx.open('GET', '../meow-sort.hs-dashboard.json', false); dx.send(); if (dx.status === 200) HSB.dash = JSON.parse(dx.responseText).iaa_config; } catch (e) {}
+  try { HSB.profile = localStorage.getItem('__hsemu_profile'); } catch (e) {}
+  function hsRoute(ep, data) {
+    var iaa = HSB.dash || { placements: [] };
+    var aps = []; (iaa.placements || []).forEach(function (p) { (p.ads || []).forEach(function (a) { aps.push({ id: a.id, type: /^inter/i.test(p.label) ? 'interstitial' : 'rewarded', status: 'active' }); }); });
+    if (ep === '/api/login') { var b = { success: true, session_token: 'sess_emu', open_id: 'open_emu', last_updated_timestamp: 1, ack_required: true, refund_mode: 'auto', aps: aps, iaa_config: JSON.stringify(iaa) }; if (HSB.profile) b.profile_data = HSB.profile; return b; }
+    if (ep === '/api/ads/config') return { success: true, aps: aps, iaa_config: JSON.stringify(iaa) };
+    if (ep === '/api/pending_rewards') return { success: true, pending_count: 0, rewards: [] };
+    if (ep === '/api/sync') { try { var pd = JSON.parse(data).profile_data; HSB.profile = typeof pd === 'string' ? pd : JSON.stringify(pd); localStorage.setItem('__hsemu_profile', HSB.profile); } catch (e) {} return { success: true, last_updated_timestamp: Date.now() }; }
+    if (ep === '/api/orders/mark_delivered') return { success: true, delivered: (JSON.parse(data).order_ids || []), already: [], not_found: [], not_paid: [] };
+    if (ep === '/api/shop/items') return { success: true, items: [] };
+    if (ep === '/api/orders') return { success: true, orders: [] };
+    return { success: false, error: 'emu: no route ' + ep };
+  }
+  function ttRequest(o) {
+    var ep = String(o.url).replace(/^https?:\/\/[^/]+/, '');
+    setTimeout(function () {
+      if (Q.hsoffline === '1') { o.fail && o.fail({ errMsg: 'request:fail (emulator offline)' }); o.complete && o.complete(); return; }
+      var body = hsRoute(ep, o.data);
+      console.log('[emu] HS ' + ep + (body.success ? '' : ' ✗'));
+      o.success && o.success({ statusCode: 200, data: JSON.stringify(body), header: {} }); o.complete && o.complete();
+    }, 30);
+    return { abort: function () {} };
+  }
 
   var showCbs = [], hideCbs = [];
   function fireHide() { hideCbs.forEach(function (f) { try { f(); } catch (e) { console.error(e); } }); }
@@ -305,10 +313,11 @@
       var iv = setInterval(function () {
         p = Math.min(100, p + 25); task.cbs.forEach(function (f) { f({ progress: p, totalBytesWritten: p, totalBytesExpectedToWrite: 100 }); });
         if (p >= 100) { clearInterval(iv); o.success && o.success(); o.complete && o.complete(); }
-      }, 60);
+      }, Q.slowload ? +Q.slowload : 60);   // ?slowload=ms per 25% step, to look at the loading screen
       return task;
     },
     login: function (o) { later(function () { o.success && o.success({ code: 'emu-code-' + Date.now(), anonymousCode: 'emu-anon' }); }); },
+    request: ttRequest,
     addShortcut: function (o) {
       sheet('Add Meow Sort to Home Screen?', 'Get quick access from your home screen.', 'Add', function (ok) {
         if (ok) { var m = M(); m.shortcutAdded = true; m.shortcutReady = true; setM(m); o.success && o.success(); }
@@ -332,6 +341,7 @@
     }
   };
   window.TTMinis = { game: api };
+  window.tt = api;                 // the HS kit uses tt.request / tt.getStorageSync / tt.onShow
   window.GameGlobal = window;
   console.log('[emu] device', devName, D.w + 'x' + D.h, '@' + D.dpr + 'x', Q.ttquirks === '1' ? '+quirks' : '');
 

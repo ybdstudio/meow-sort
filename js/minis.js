@@ -1,89 +1,46 @@
-/* ===================== MINIS: platform rewards (game side) =====================
-   Game rules for TikTok revisit/share incentives. Platform calls live in
-   native/src/minis_native.js (MinisNative); this file only decides WHEN to
-   reward and HOW MUCH, and keeps the claim flags in the save file so a reward
-   is never granted twice. */
+/* ===================== MINIS: TikTok missions + share (Free Coins panel) =====================
+   All through the HS kit (native/src/hs_native.js → HSMinis):
+     shortcut → HSGame.tiktokMission.start('shortcut')  reward key tiktok_shortcut (once)
+     revisit  → HSGame.tiktokMission.start('profile')   reward key tiktok_profile  (once)
+     share    → HSGame.share({...})                      reward key share           (daily)
+   Rewards arrive in hsOnGive when TikTok confirms; amounts come from HS (dashboard / defaults).
+   The game never calls addShortcut / startEntranceMission / shareAppMessage itself. */
 var Minis = {
-  state: { shortcutClaimed: false, revisitClaimed: false, shareDay: '', shareCount: 0 },
+  load: function () {},                     // old saves carried claim flags; HS keeps them now
 
-  load: function (saved) {
-    if (!saved) return;
-    for (var k in this.state) if (saved[k] !== undefined) this.state[k] = saved[k];
-  },
-  today: function () { var d = new Date(); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); },
-  sharesLeft: function () {
-    if (this.state.shareDay !== this.today()) return GAME_CONFIG.rewards.shareDailyLimit;
-    return Math.max(0, GAME_CONFIG.rewards.shareDailyLimit - this.state.shareCount);
-  },
-
-  /* Rows shown in the Rewards panel */
   rows: function () {
-    var R = GAME_CONFIG.rewards;
     return [
-      { id: 'shortcut', title: 'Add to Home Screen', coins: R.shortcut, done: this.state.shortcutClaimed,
-        available: MinisNative.supports('shortcut'), cta: 'Add' },
-      { id: 'revisit', title: 'Revisit from your Profile', coins: R.revisit, done: this.state.revisitClaimed,
-        available: MinisNative.supports('revisit'), cta: 'Go' },
-      { id: 'share', title: 'Share with a friend (' + this.sharesLeft() + ' left today)', coins: R.share,
-        done: this.sharesLeft() <= 0, available: MinisNative.supports('share'), cta: 'Share' }
+      { id: 'shortcut', title: 'Add to Home Screen', coins: HS.amount('tiktok_shortcut', 'coins'),
+        done: HSMinis.done('shortcut'), available: HSMinis.supported('shortcut'), cta: 'Add' },
+      { id: 'revisit', title: 'Revisit from your Profile', coins: HS.amount('tiktok_profile', 'coins'),
+        done: HSMinis.done('profile'), available: HSMinis.supported('profile'), cta: 'Go' },
+      { id: 'share', title: 'Share with a friend (daily)', coins: HS.amount('share', 'coins'),
+        done: HSMinis.canShare() && !HSMinis.shareAvailable(), available: HSMinis.canShare(), cta: 'Share' }
     ];
   },
 
-  grant: function (id, coins, title) {
-    game.coins += coins;
-    Anim.coinPillBounce = 1;
-    Sound.coin();
-    fx.rewardPopup(title || GAME_NAME, coins);
-    saveProgress();
-  },
-
-  /* Player tapped a row */
+  /* Free Coins row → the matching popup */
   start: function (id) {
-    var self = this, R = GAME_CONFIG.rewards;
-    if (id === 'shortcut' && !this.state.shortcutClaimed) {
-      MinisNative.addShortcut(function (ok, err) {
-        if (!ok) { fx.toast(err || 'Could not add shortcut'); return; }
-        self.checkShortcut(true);
-      });
-    } else if (id === 'revisit' && !this.state.revisitClaimed) {
-      MinisNative.startEntranceMission(function (ok) {
-        if (!ok) fx.toast('Revisit mission is not available');
-        else fx.toast('Open ' + GAME_NAME + ' from your TikTok profile to claim!', 2.6);
-      });
-    } else if (id === 'share' && this.sharesLeft() > 0) {
-      MinisNative.share({ title: GAME_NAME + ' — can you sort all the cats?', query: 'from=share&level=' + (game.levelIndex + 1) },
-        function (ok) {
-          if (!ok) return;
-          if (self.state.shareDay !== self.today()) { self.state.shareDay = self.today(); self.state.shareCount = 0; }
-          self.state.shareCount++;
-          self.grant('share', R.share, 'Thanks for sharing!');
-        });
-    }
+    openMiniPopup(id === 'shortcut' ? 'pop_launch' : id === 'revisit' ? 'pop_entry' : 'pop_share');
   },
 
-  /* Ask the platform whether a pending reward can be claimed. */
-  checkShortcut: function (fromTap) {
-    var self = this;
-    if (this.state.shortcutClaimed) return;
-    MinisNative.getShortcutMissionReward(function (can) {
-      if (can && !self.state.shortcutClaimed) {
-        self.state.shortcutClaimed = true;
-        self.grant('shortcut', GAME_CONFIG.rewards.shortcut, 'Shortcut added!');
-        MinisNative.reportGranted('shortcut');
-      } else if (fromTap) fx.toast('Shortcut added — reward will arrive soon');
-    });
-  },
-  checkRevisit: function () {
-    var self = this;
-    if (this.state.revisitClaimed) return;
-    MinisNative.getEntranceMissionReward(function (can) {
-      if (can && !self.state.revisitClaimed) {
-        self.state.revisitClaimed = true;
-        self.grant('revisit', GAME_CONFIG.rewards.revisit, 'Welcome back!');
-        MinisNative.reportGranted('revisit');
-      }
-    });
-  },
-  /* Called on boot and every time the game returns to the foreground. */
-  checkAll: function () { this.checkShortcut(false); this.checkRevisit(); }
+  /* Popup button: send the player off / share. Rewards arrive in hsOnGive. */
+  act: function (kind) {
+    var close = function () { if (uiPanel.indexOf('pop_') === 0) { game.resume(); uiPanel = 'settings'; } };
+    if (kind === 'shortcut' || kind === 'profile') {
+      HSMinis.start(kind).then(function (r) {
+        if (r === 'unsupported') { fx.toast('Not available on this TikTok version'); return; }
+        if (r === 'failed') { fx.toast(kind === 'shortcut' ? 'Could not add the shortcut' : 'Could not start the mission'); return; }
+        close();
+        if (kind === 'profile') fx.toast('Open ' + GAME_NAME + ' from your TikTok profile to claim!', 2.8);
+        else if (!HSMinis.done('shortcut')) fx.toast('Open ' + GAME_NAME + ' from the home-screen icon to claim!', 2.8);
+      });
+    } else if (kind === 'share') {
+      HSMinis.share({ title: GAME_NAME + ' — can you sort all the cats?' }).then(function (items) {
+        close();
+        if (items && items.coins) fx.rewardPopup('Share Rewards', items.coins);
+        else if (HSGame && HSGame.lastShareError === 'claimed') fx.toast('Shared! Today\'s reward is already collected');
+      });
+    }
+  }
 };

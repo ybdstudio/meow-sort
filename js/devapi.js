@@ -6,8 +6,10 @@ var MeowSort = Platform.global.MeowSort = {
   verifyLevels: function () { var r = CORE.verifyAllLevels(); Platform.log(JSON.stringify(r)); return r; },
   minis: function () { return Minis; },
   ads: function () { return Ads; },
-  ui: function () { return { panel: uiPanel, winDoubled: winDoubled, rewardPopup: !!rewardPopup }; },
-  openPanel: function (name) { if (game.pause()) uiPanel = name; return game.state; },
+  hs: function () { return { kit: HSGame, started: HS.started, loggedIn: HS.loggedIn, reason: HS.startReason }; },
+  ui: function () { return { panel: uiPanel, winDoubled: winDoubled, rewardPopup: rewardPopup ? { title: rewardPopup.title, coins: rewardPopup.coins } : null, loadingArt: !!LOAD_IMG, uiArt: !!UI_IMG }; },
+  buttons: function () { return uiButtons.map(function (b) { return { id: b.id, x: b.x + b.w / 2, y: b.y + b.h / 2 }; }); },
+  openPanel: function (name) { if (name.indexOf('pop_') === 0) openMiniPopup(name); else if (game.pause()) uiPanel = name; return game.state; },
   view: function () { return view; },
   // Performs the solver's next move through the same selectCat/selectShelf path a player uses.
   step: function () {

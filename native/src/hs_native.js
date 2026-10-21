@@ -1,67 +1,113 @@
-/* ===================== HS NATIVE: HyperScale SDK bridge =====================
-   Loads the HS SDK shipped next to game.js and adapts it to the Ads provider interface.
+/* ===================== HS: HyperScale TikTok SDK kit (hs-game.js 3.x) =====================
+   Integrated per docs/hs-kit/INTEGRATE-WITH-AI.md.
+   - hs-game.js + hs-tiktok-sdk.min.js sit next to game.js (copied by the build, never edited).
+   - The game only reports moments: HSGame.showAd('<placement label>') for ads,
+     HSGame.share() / HSGame.tiktokMission for TikTok share + missions.
+   - What a moment gives is DATA: HS dashboard first, else HS_DEFAULTS below.
+   - Everything given arrives in ONE place: hsOnGive(items, from).
+   - The game never calls TikTok ads / share / shortcut / entrance mission / login itself.
+   HS_CONFIG (gameId + sdkKey) is injected by tools/build_native.js from native/hs-config.json. */
+var HSGame = null;
+try { HSGame = require('./hs-game.js'); } catch (e) { HSGame = null; }
 
-   Package layout (copied by tools/build_native.js when the files exist):
-     hs/hs-game.js            HS SDK (from HyperScale)
-     hs/hs-tiktok-sdk.min.js  HS TikTok adapter (from HyperScale; required by hs-game.js if it needs it)
-     hs-config.js             module.exports = { gameId, sdkKey, places, testMode }  (generated, NOT in game.js)
-
-   !! UNVERIFIED: the HS API below (init / canShowAd / showAd / onGive) follows the
-   integrate-hs-sdk-ads skill notes, not the real SDK. Check it against hs-game.js when the
-   files arrive and adjust ONLY this file. */
-var HSAds = (function () {
-  var H = null, CFG = null, waiting = null, ready = false;
-
-  function load() {
-    if (typeof require !== 'function') return false;
-    try { CFG = require('./hs-config.js'); } catch (e) { Platform.log('hs: no hs-config.js (' + e.message + ')'); return false; }
-    try { H = require('./hs/hs-game.js'); } catch (e) { Platform.log('hs: SDK not in package (' + e.message + ')'); return false; }
-    if (H && H.default) H = H.default;
-    return !!H;
+/* The reward table. Keys = EXACT HS dashboard placement labels / built-in keys.
+   Paste the same thing into the dashboard (it is in meow-sort.hs-dashboard.json). */
+var HS_DEFAULTS = {
+  rewards: {
+    'Double Coin':   { coins: 50 },                    // ad on the Level Complete panel
+    'Shuffle':       { shuffle: 1 },                   // ad on the Shuffle booster
+    'Extra Bed':     { extra_bed: 1 },                 // ad on the Extra Bed booster + level-start offer
+    'Rescue':        { shuffle: 1, extra_bed: 1 },     // ad in the "Out of moves" popup
+    'Gift Pod':      { coins: 100 },                   // ad on the video pod / Free Coins
+    share:           { coins: 100, $limit: 'daily' },  // share with a friend          = 2 levels, daily
+    tiktok_shortcut: { coins: 250 },                   // TikTok mission: add to home screen (once)  = 5 levels
+    tiktok_profile:  { coins: 200 }                    // TikTok mission: come back from the profile (once) = 4 levels
+    // 'Inter1' has no reward: showAd('Inter1') resolves {} when the interstitial completes
+  },
+  items: {
+    coins:     { category: 'currency', name: 'Coins' },
+    shuffle:   { category: 'booster',  name: 'Shuffle' },
+    extra_bed: { category: 'booster',  name: 'Extra Bed' }
   }
-  function place(label) { return (CFG && CFG.places && CFG.places[label]) || label; }   // our label → HS dashboard name
+};
 
-  function create() {
-    if (!load()) return null;
-    try {
-      if (typeof H.init === 'function') { var ir = H.init({ gameId: CFG.gameId, sdkKey: CFG.sdkKey, testMode: !!CFG.testMode, platform: 'tiktok' }); if (ir === false) throw new Error('init returned false'); }
-      ready = true;
-    } catch (e) { Platform.warn('hs: init failed', e); return null; }
-    // Rewards are delivered through onGive (may arrive after the ad closes, or for queued grants).
-    if (typeof H.onGive === 'function') H.onGive(function (give) {
-      var lbl = give && (give.place || give.label || give.placement);
-      Platform.log('hs: onGive ' + JSON.stringify(give));
-      if (waiting && (!lbl || lbl === place(waiting.label) || lbl === waiting.label)) { var w = waiting; waiting = null; w.done(true); }
-      else Ads._externalGrant(lbl);
+var HS = {
+  started: false, loggedIn: false, startReason: '',
+  sdk: function () { return HSGame; },
+  // Amount a key gives, for labels like "+100" (never a typed number).
+  amount: function (key, item) {
+    var r = HSGame ? HSGame.rewards(key) : HS_DEFAULTS.rewards[key];
+    return r && r[item] ? r[item] : 0;
+  },
+  start: function () {
+    if (!HSGame) { HS.startReason = 'hs-game.js not in package'; Platform.log('hs: ' + HS.startReason); return Promise.resolve(null); }
+    HSGame.debug = !!Platform.debug;
+    return HSGame.start({
+      gameId: HS_CONFIG.gameId, sdkKey: HS_CONFIG.sdkKey,
+      defaults: HS_DEFAULTS,
+      debug: !!Platform.debug,
+      onGive: hsOnGive,
+      onLoad: hsOnLoad
+    }).then(function (r) {
+      HS.started = true; HS.loggedIn = !!(r && r.loggedIn); HS.startReason = (r && r.reason) || '';
+      Platform.log('hs: started v' + HSGame.version + ' loggedIn=' + HS.loggedIn + (HS.startReason ? ' (' + HS.startReason + ')' : ''));
+      saveProgress();                         // first cloud save (the kit never uploads a fresh install over the cloud)
+      // which dashboard placements have an ad right now (also lists every place for hs-check)
+      var places = Object.keys(ADS.rewarded).concat([ADS.inter.label]);
+      Platform.log('hs: placements ' + places.map(function (l) { return l + (HSGame.canShowAd(l) ? ' ✓' : ' ✗'); }).join(' · '));
+      return r;
     });
-    Platform.log('hs: SDK ready (gameId ' + CFG.gameId + (CFG.testMode ? ', TEST MODE' : '') + ')');
-    return {
-      name: 'hs',
-      rewardReady: function (label) {
-        try { return typeof H.canShowAd === 'function' ? !!H.canShowAd(place(label)) : true; } catch (e) { return false; }
-      },
-      showReward: function (label, done) {
-        waiting = { label: label, done: done };
-        call(place(label), function (ok, err) {
-          if (!waiting || waiting.label !== label) return;              // onGive already granted it
-          if (!ok) { waiting = null; done(false, err); return; }
-          if (typeof H.onGive !== 'function') { waiting = null; done(true); return; }
-          // closed: give onGive a moment to arrive (it can lag the close event), else "closed early"
-          setTimeout(function () { if (waiting && waiting.label === label) { waiting = null; done(false, 'closed_early'); } }, 1500);
-        });
-      },
-      showInter: function (trigger, done) { call(place(ADS.interLabel), function (ok, err) { done(!!ok, err); }); }
-    };
   }
-  // showAd may return a promise, take callbacks, or both — support all three.
-  function call(p, cb) {
-    var fired = false; function once(ok, err) { if (!fired) { fired = true; cb(ok, err); } }
-    try {
-      var r = H.showAd(p, { onClose: function (res) { once(res === undefined ? true : !!(res && res.isEnded !== false), null); },
-                            onError: function (e) { once(false, (e && (e.errMsg || e.message)) || 'error'); } });
-      if (r && typeof r.then === 'function') r.then(function (res) { once(res === undefined ? true : !!(res && res.isEnded !== false), null); },
-                                                    function (e) { once(false, (e && (e.errMsg || e.message)) || 'no_fill'); });
-    } catch (e) { once(false, String(e)); }
+};
+
+/* THE only place anything is added. Unknown item/category → throw, so HS does not record it. */
+function hsOnGive(items, from) {
+  if (!game) throw new Error('game not ready');
+  var add = {};
+  Object.keys(items).forEach(function (id) {
+    var it = (HSGame && HSGame.item(id)) || HS_DEFAULTS.items[id];
+    var cat = it && it.category;
+    if (cat !== 'currency' && cat !== 'booster') throw new Error('unknown item ' + id + ' (' + cat + ')');
+    if (cat === 'currency' && id !== 'coins') throw new Error('unknown currency ' + id);
+    if (cat === 'booster' && id !== 'shuffle' && id !== 'extra_bed') throw new Error('unknown booster ' + id);
+    add[id] = Math.max(0, Math.floor(Number(items[id]) || 0));
+  });
+  if (add.coins) { game.coins += add.coins; Anim.coinPillBounce = 1; Sound.coin(); }
+  if (add.shuffle) game.boosters.shuffle += add.shuffle;
+  if (add.extra_bed) game.boosters.bed += add.extra_bed;
+  Platform.log('hs: onGive ' + JSON.stringify(add) + ' from ' + from);
+  saveProgress();
+  // TikTok missions pay later (when TikTok confirms): close their popup and celebrate here
+  if (from === 'tiktok_shortcut' || from === 'tiktok_profile') {
+    if (uiPanel.indexOf('pop_') === 0 && game.state === S.PAUSED) { game.resume(); uiPanel = 'settings'; }
+    if (add.coins) fx.rewardPopup(from === 'tiktok_shortcut' ? 'Launch Reward' : 'Entry Reward', add.coins);
   }
-  return { create: create, placeOf: place, get ready() { return ready; } };
-})();
+}
+
+/* Cloud save from another phone: keep the FURTHER progress, apply it, save the merge. */
+function hsOnLoad(cloud) {
+  if (!cloud || typeof cloud !== 'object' || !game) return;
+  var localLevel = game.levelIndex, cl = Number(cloud.level) || 0;
+  if (cl > localLevel) {                              // further level wins, with its coins
+    if (typeof cloud.coins === 'number') { game.coins = cloud.coins; Anim.displayCoins = game.coins; }
+    if (game.state !== S.LEVEL_COMPLETE) game.loadLevel(Math.min(cl, GAME_CONFIG.maxLevel - 1));
+    Platform.log('hs: cloud progress restored (level ' + (cl + 1) + ')');
+  } else if (cl === localLevel && typeof cloud.coins === 'number' && cloud.coins > game.coins) {
+    game.coins = cloud.coins; Anim.displayCoins = game.coins;     // same level: keep the richer copy
+    Platform.log('hs: cloud coins restored');
+  }
+  saveProgress();
+}
+
+/* Small helper for the TikTok missions + share rows */
+var HSMinis = {
+  supported: function (kind) { return !!HSGame && HSGame.tiktokMission.supported(kind); },
+  done: function (kind) { return !!HSGame && HSGame.tiktokMission.done(kind); },
+  start: function (kind) {
+    if (!HSGame) return Promise.resolve('unsupported');
+    return HSGame.tiktokMission.start(kind);
+  },
+  canShare: function () { return !!HSGame && HSGame.canShare(); },
+  shareAvailable: function () { return !!HSGame && HSGame.available('share'); },
+  share: function (opts) { return HSGame ? HSGame.share(opts) : Promise.resolve(null); }
+};

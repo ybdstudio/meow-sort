@@ -18,7 +18,6 @@ function startGame() {
     if (typeof saved.coins === 'number') game.coins = saved.coins;
     if (typeof saved.sound === 'boolean') Sound.on = saved.sound;
     if (saved.gfxMode === 'gradient') gfxFlat = false;            // flat unless the player opted into gradients
-    Minis.load(saved.minis);
   }
   Anim.displayCoins = game.coins;
   var startLevel = saved && typeof saved.level === 'number' ? Math.max(0, Math.min(saved.level, GAME_CONFIG.maxLevel - 1)) : 0;
@@ -35,12 +34,11 @@ function startGame() {
     return r;
   };
   Ads.init();
+  HS.start();                              // login, dashboard config, cloud save, pending rewards — all inside the HS kit
   booted = true;
   Platform.log('Meow Sort v' + VERSION + ' build ' + BUILD + ' render=' + Platform.renderMode());
   last = Platform.now();
   Platform.raf(frame);
-  MinisNative.login();
-  Minis.checkAll();
   if (Platform.debug) MeowSort.verifyLevels();
   MeowSort.ready = true;
 }
@@ -49,6 +47,7 @@ function boot() {
   Platform.setFlatGraphics(true);          // loading screen draws flat too
   resize();
   Platform.setFps(60);
+  loadLoadingArt();
   bootTick();
   Platform.loadSubpackage('res', function (p) { bootProgress = 0.1 + p * 0.7; }, function (err) {
     if (err) { booted = true; showError(err); return; }
@@ -84,7 +83,7 @@ function boot() {
   Platform.onHide(function () { try { saveProgress(); Sound.suspend(); } catch (e) {} });
   Platform.onShow(function () {
     last = Platform.now();
-    try { Sound.init(); if (game) Minis.checkAll(); } catch (e) {}
+    try { Sound.init(); } catch (e) {}          // TikTok missions are re-checked by the HS kit on show
   });
 }
 

@@ -1,0 +1,87 @@
+# HS dashboard — the data your game runs on
+
+The game reports **moments** by key (`claim('mission_a')`, `showAd('revive')`,
+`share()`). Everything those moments do is data here. Change it any time;
+players get it at their next start.
+
+| What | Where | Example |
+|---|---|---|
+| **Ad units** — the ids TikTok gave you | Edit Game → Ad placements | `ad7635013883317733396`, rewarded |
+| **Places, rewards, items** | Ads Config → **Edit raw JSON** (same JSON as Edit Game → IAA Config) | below |
+| **Products** | Products → Import JSON | below |
+
+Your partner's AI writes all of it into `<game>.hs-dashboard.json` and
+`hs-check` validates it against the build before you paste.
+
+---
+
+## Places, rewards, items — one JSON
+
+```json
+{
+  "placements": [
+    { "label": "revive",    "ads": [ { "id": "ad7635013883317733396", "config": { "cooldown": 30 } } ] },
+    { "label": "level_win", "ads": [ { "id": "ad7635205496211589141" } ] }
+  ],
+  "rewards": {
+    "mission_a":       { "hint": 2, "revive": 1, "$limit": "once" },
+    "daily_gift":      { "coins": 50, "$limit": "daily" },
+    "revive":          { "revive": 1 },
+    "share":           { "hint": 3, "$limit": "daily" },
+    "tiktok_shortcut": { "hint": 3 },
+    "tiktok_profile":  { "hint": 3 }
+  },
+  "items": {
+    "hint":      { "category": "consumable", "name": "Hint",       "icon": "https://cdn.example.com/hint.png" },
+    "coins":     { "category": "currency",   "name": "Coins" },
+    "skin_gold": { "category": "skin",       "name": "Gold rings", "image": "https://cdn.example.com/gold.png" }
+  }
+}
+```
+
+**`placements`** — one per ad moment. `label` = the name in the code,
+`showAd('revive')`, exactly (lowercase). `ads` = a waterfall of your ad unit
+ids: the first one active and not cooling down is shown. A unit's type
+(rewarded / interstitial) comes from Edit Game; the game does not care.
+**No placement = no ad** at that moment — that is how you switch one off.
+
+**`rewards`** — what a key gives: `{ "item": count }`. Optional `"$limit"`:
+`"once"`, `"daily"`, or none (every time). Built in: `share` is daily,
+`tiktok_*` once. The reward of an ad place has the place's name (`revive`).
+`"key": null` switches a default reward off.
+
+**`items`** — what each item is: `category` (the game handles each category in
+code), `name`, `icon`/`image` (display). Add a new item of a category the game
+already handles — a new skin, a new currency pack — with no build.
+
+> Keep `rewards` and `items` at the top level, next to `placements`. Keys
+> added inside a placement are dropped when the Ads Config builder saves.
+
+## Products
+
+```json
+[
+  { "id": 1, "name": "Hint pack",      "beans_cost": 10, "rewards": { "hint": 15 } },
+  { "id": 2, "name": "Gold skin pack", "beans_cost": 50, "rewards": { "skin_gold": 1, "coins": 200 },
+    "icon": "https://cdn.example.com/gold.png", "badge": "NEW" }
+]
+```
+
+`id` a number, unique per game (re-importing an id updates it) ·
+`beans_cost` the price · `rewards` like above · any other field (`icon`,
+`badge`, `sort`…) reaches the shop screen as-is.
+
+## What works without a new build — and what does not
+
+| ✅ Dashboard only | ❌ Needs a new build |
+|---|---|
+| change any amount or limit | a moment the code never reports (a new `claim` / `showAd` key) |
+| switch an ad place on / off, its waterfall, cooldown | a new item **category** |
+| a new reward key for a moment the code already reports | new UI, new game logic |
+| new items of a known category, new products, prices, badges | |
+
+`hs-check` lists the keys, places and categories a build supports, and fails
+any reward this build cannot give.
+
+> Remote images (`icon`, `image`) may need their domain allowed in the TikTok
+> developer console; the game should fall back to a built-in icon.

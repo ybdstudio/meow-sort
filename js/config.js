@@ -1,7 +1,7 @@
 /* ===================== CONFIG =====================
    Build-level settings for Meow Sort. Everything here can be tuned without
    touching game logic. Rules/economy are merged into CORE.CONFIG at start-up. */
-var VERSION = '0.2.0';
+var VERSION = '0.3.0';
 var BUILD = 'dev';          // replaced by tools/build_native.js with the build time
 var GAME_NAME = 'Meow Sort';
 var STORE_KEY = 'meowsort_native_v1';
@@ -24,13 +24,6 @@ var GAME_CONFIG = {
     shuffleUses: 1,
     extraBedUses: 1
   },
-  // TikTok platform rewards (coins)
-  rewards: {
-    shortcut: 200,      // add to home screen
-    revisit: 150,       // entrance (revisit) mission
-    share: 50,          // share to a friend, once per day
-    shareDailyLimit: 3
-  },
   maxLevel: 999,
   // Solver budgets kept small so nothing stalls the frame on low-end phones
   hintNodes: 20000,
@@ -38,24 +31,24 @@ var GAME_CONFIG = {
 };
 
 /* ===================== ADS =====================
-   Placement labels must match the HS dashboard EXACTLY (case + spaces).
+   Placement labels are the EXACT labels on the HS dashboard (case + spaces). The game calls
+   Ads.reward('<label>') / Ads.tryInter(trigger) → HSGame.showAd('<label>'); HS serves the ad.
    Rewarded (opt-in, player gets something):
-     R1  Double Coins   – "x2 Coins" on the Level Complete panel
-     R2  Booster Refill – Shuffle / Extra Bed after the free use is spent
-     R3  Rescue         – "Out of moves" popup: +1 bed and +1 shuffle
-     R4  Gift Pod       – video pod in the HUD / "Watch a video" in Free Coins (+100 coins)
-     R5  Level Boost    – level start (from level 3): "Start with +1 Extra Bed"
-   Interstitial (Inter1), only at natural breaks:
+     'Double Coin' – "x2 Coins" on the Level Complete panel
+     'Shuffle'     – Shuffle booster after the free use is spent
+     'Extra Bed'   – Extra Bed booster after the free use is spent, and the level-start "+1 Bed" offer
+     'Rescue'      – "Out of moves" popup: +1 bed and +1 shuffle
+     'Gift Pod'    – video pod in the HUD / "Watch a video" in Free Coins (+100 coins)
+   Interstitial 'Inter1', only at natural breaks (triggers):
      I_next    Level Complete → Next Level
      I_restart Restart / Replay
      I_select  Level picked in Settings
      I_panel   closing Settings / Free Coins (aggressive profile)
      I_break   right after a shelf match completes, when no ad for a while (aggressive profile)
-   Profile 'ipu8' targets ~8 impressions per user in the first 5 minutes (see docs/ADS_PLAN.md and
+   Profile 'ipu8' targets ~8 impressions per user in the first 5 minutes (docs/ADS_PLAN.md,
    `node tools/sim_ads.js`). 'balanced' is the fallback if retention drops. */
 var ADS = {
   enabled: true,
-  provider: 'auto',            // auto → 'hs' if the HS SDK loads, else 'tt' (TikTok ads, needs adUnitIds), else 'none'
   profile: 'ipu8',
   profiles: {
     ipu8: {
@@ -75,16 +68,17 @@ var ADS = {
       maxInterPerSession: 15
     }
   },
+  // Rewarded placements (exact HS labels) → local cooldown (s). What each gives is in HS_DEFAULTS /
+  // the HS dashboard; which ad unit plays is on the HS dashboard. The game never sees ad unit IDs.
   rewarded: {
-    R1: { name: 'Double Coins', cooldown: 0 },
-    R2: { name: 'Booster Refill', cooldown: 0 },
-    R3: { name: 'Rescue', cooldown: 0 },
-    R4: { name: 'Gift Pod', cooldown: 45, coins: 100 },
-    R5: { name: 'Level Boost', cooldown: 0, minLevel: 2 }   // level start: "+1 Extra Bed" before playing
+    'Double Coin': { cooldown: 0 },
+    'Shuffle':     { cooldown: 0 },
+    'Extra Bed':   { cooldown: 0 },
+    'Rescue':      { cooldown: 0 },
+    'Gift Pod':    { cooldown: 45 }
   },
-  interLabel: 'Inter1',
+  inter: { label: 'Inter1' },
+  levelBoost: { label: 'Extra Bed', minLevel: 2 },   // level-start "+1 Bed" offer from level 3
   breakNotice: 1.2,            // s "Ad break" notice before an interstitial
   safetyTimeout: 100,          // s: resume the game if the SDK never calls back
-  // Direct TikTok ads (provider 'tt'): ad unit IDs from TikTok Developer Portal / HS dashboard
-  adUnitIds: { rewarded: '', interstitial: '' }
 };
