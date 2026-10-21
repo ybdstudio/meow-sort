@@ -40,7 +40,7 @@ function params(lv) {
   }
   if (t === 'Medium') return { groups: 8, colors: 7, rows: 5, beds: 2, pick: 0.3 };
   if (t === 'Hard') return { groups: 8, colors: 8, rows: 5, beds: 1, pick: 0.85 };
-  return { groups: 9, colors: 9, rows: 5, beds: 1, pick: 0.45 };   // Super Hard
+  return { groups: 9, colors: 9, rows: 5, beds: 2, pick: 0.45 };   // Super Hard (2 beds: the same-colour rule is already strict)
 }
 
 /* How it FEELS: a casual player model (prefers same-colour moves, otherwise random) plays the level

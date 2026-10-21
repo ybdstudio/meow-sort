@@ -321,7 +321,9 @@ function drawPods() {
       ctx.save(); ctx.beginPath(); ctx.arc(0, 2, 25, 0, Math.PI * 2); ctx.clip();
       var M = CAT_FACES[p.icon], set = SPRITES[p.icon];
       if (M && set) {
-        var fcx = (M.eyes[0][0] + M.eyes[1][0]) / 2, fcy = (M.eyes[0][1] + M.eyes[1][1]) / 2 + 14;
+        var e0 = M.eyes[0], e1 = M.eyes[1] || null;          // pirate has one eye (patch) → centre on the nose
+        var fcx = e1 ? (e0[0] + e1[0]) / 2 : (M.nose ? M.nose[0] : M.w / 2);
+        var fcy = (e1 ? (e0[1] + e1[1]) / 2 : e0[1]) + 14;
         var kk = 0.235 * (1 + p.bounce * 0.0);
         ctx.translate(0, 2); ctx.scale(kk, kk);
         blitSprite(set.open, -fcx, -fcy);

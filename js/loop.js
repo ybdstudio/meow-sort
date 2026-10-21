@@ -1,10 +1,16 @@
 /* ===================== GAME ENGINE LOOP ===================== */
-var last = Platform.now();
+var last = Platform.now(), badFrames = 0;
 function frame(now) {
   if (typeof now !== 'number' || now < 1) now = Platform.now();
   if (now - last > 1000) last = now;                 // came back from background
   var dt = Math.min(0.05, Math.max(0, (now - last) / 1000)); last = now;
-  try { step(dt); render(); } catch (err) { showError(err); return; }
+  try { step(dt); render(); badFrames = 0; }
+  catch (err) {
+    // One bad frame must never freeze the game: log it, reset canvas state, keep looping.
+    badFrames++; Platform.warn('frame error #' + badFrames, err && err.stack ? err.stack : err);
+    try { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; } catch (e2) {}
+    if (badFrames > 120) { showError(err); return; }   // ~2 s of every frame failing → show the error screen
+  }
   Platform.raf(frame);
 }
 function step(dt) {

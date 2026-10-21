@@ -73,6 +73,21 @@ const ok = (c, m) => { console.log((c ? '  PASS ' : '  FAIL ') + m); if (!c) fai
   const inner = await page.evaluate(() => { const c = MeowSort.game.board.containers.find(c => c.cats.length >= 3 && c.cats[0].color !== c.cats[c.cats.length - 1].color); return c ? c.id : null; });
   if (inner) { await tapSlot(inner, 0); ok(await page.evaluate(() => MeowSort.game.state === 'READY'), 'inner (blocked) cat is not selectable'); }
 
+  // v0.5 sort rule: a cat lands only on an empty spot or on the same colour
+  const rule = await page.evaluate(() => {
+    const C = MeowSort.core, b = C.buildBoard({ name: 't', beds: 1, left: ['RB', 'R', ''], right: ['B'] });
+    const id = k => b.containers[k].id;
+    return { diff: C.canMove(b, id(0), 1, id(1), 'edge'), same: C.canMove(b, id(0), 1, id(3), 'edge'),
+             empty: C.canMove(b, id(0), 1, id(2), 'edge'), bed: C.canMove(b, id(0), 1, b.containers.find(c => c.kind === 'bed').id, 'edge') };
+  });
+  ok(!rule.diff.ok && rule.diff.reason === 'color', 'cannot move onto a different-colour outer cat');
+  ok(rule.same.ok && rule.empty.ok && rule.bed.ok, 'can move onto same colour, empty shelf, or bed');
+  // v0.5 freeze fix: the matched-colour pod icon for the one-eyed pirate must render
+  const warns = []; const onC = m => { if (/frame error|fatal/.test(m.text())) warns.push(m.text()); }; page.on('console', onC);
+  await page.evaluate(() => { MeowSort.pods[1].icon = 'pirate'; }); await page.waitForTimeout(400);
+  ok(warns.length === 0 && errors.length === 0, 'pirate pod icon renders without a frame error');
+  await page.evaluate(() => { MeowSort.pods[1].icon = 'pink'; }); page.off('console', onC);
+
   // Solve the rest of level 1 with real taps following the solver
   for (let n = 0; n < 60; n++) {
     const st = await page.evaluate(() => MeowSort.game.state);

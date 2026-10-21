@@ -19,7 +19,7 @@ var fx = {
     Anim.contShake[dstId] = 0.35;
     var c = CORE.getC(game.board, dstId);
     if (c) c.cats.forEach(function (k) { var vv = Anim.visuals[k.id]; if (vv) { vv.shake = 0.35; setMood(vv, 'determined', 0.5); } });
-    var msg = { full: 'This spot is full!', locked: 'That shelf is complete', blocked: 'Pick the outermost cat first!', same: '' }[reason];
+    var msg = { color: 'Only onto the same colour!', full: 'This spot is full!', locked: 'That shelf is complete', blocked: 'Pick the outermost cat first!', same: '' }[reason];
     if (msg) fx.toast(msg);
   },
   onBlocked: function (catId, contId) {

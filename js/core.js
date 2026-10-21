@@ -89,6 +89,8 @@ var CORE = (function () {
     if (!accessible(s, idx, rule)) return { ok: false, reason: 'blocked' };
     if (d.completed) return { ok: false, reason: 'locked' };
     if (d.cats.length >= d.capacity) return { ok: false, reason: 'full' };
+    // Sort rule: a cat may only land on an empty spot or on a cat of the SAME colour.
+    if (d.cats.length && d.cats[d.cats.length - 1].color !== s.cats[idx].color) return { ok: false, reason: 'color' };
     return { ok: true };
   }
   // Number of same-colour cats in a row at the outer (open) end of a container.
@@ -235,6 +237,7 @@ var CORE = (function () {
             if (j === i) continue;
             var d = st[j];
             if (d.length >= caps[j]) continue;
+            if (d.length && d[d.length - 1] !== ch) continue;              // only onto the same colour
             var cnt = 1;
             if (group && idx === s.length - 1) {
               var run = 1; while (run < s.length && s[s.length - 1 - run] === ch) run++;
