@@ -16,6 +16,7 @@ function hitTest(x, y) {
   var s = BTN.settings; if (Math.hypot(x - s.x, y - s.y) <= s.r + 8) return { type: 'button', id: 'settings' };
   if (Math.hypot(x - (COIN_PILL.x + 52), y - (COIN_PILL.y + 12)) <= 24 || (x >= COIN_PILL.x - 74 && x <= COIN_PILL.x + 64 && Math.abs(y - COIN_PILL.y) <= 26))
     return { type: 'button', id: 'rewards' };       // coin pill / "+" opens Free Coins
+  var vp = PODS[2]; if (Math.hypot(x - vp.x, y - vp.y) <= 42) return { type: 'button', id: 'pod_video' };   // video pod → R4
   var keys = ['undo', 'shuffle', 'bed'];
   for (i = 0; i < keys.length; i++) {
     b = BTN[keys[i]];
@@ -46,6 +47,7 @@ function hitTest(x, y) {
 
 // Immediate tap (used by the dev/test API). Real touches go through buttonStart/End.
 function handleTap(x, y) {
+  if (Ads.showing) return;
   var h = hitTest(x, y);
   if (h.type === 'button') { pressed.id = h.id; pressed.t = Anim.time; onButton(h.id); return; }
   if (rewardPopup) return;
@@ -82,20 +84,62 @@ function onButton(id) {
   if (id.indexOf('mission_') === 0) { Minis.start(id.slice(8)); return; }
   if (id.indexOf('na_') === 0) { fx.toast('Not available on this TikTok version'); return; }
   if (id === 'undo') { if (!game.undoMove()) { Sound.invalid(); fx.toast(game.history.length ? '' : 'Nothing to undo'); } return; }
-  if (id === 'shuffle') { if (!game.shuffle() && game.boosters.shuffle <= 0) fx.toast('Shuffle already used'); return; }
-  if (id === 'bed') { if (!game.addBed()) fx.toast('Extra bed already used'); return; }
-  if (id === 'close' || id === 'resume') { game.resume(); uiPanel = 'settings'; return; }
-  if (id === 'restart') { game.restartLevel(); return; }
+  if (id === 'shuffle') {
+    if (game.boosters.shuffle > 0) { game.shuffle(); return; }
+    if (!game.inputOpen()) return;
+    if (!Ads.rewardReady('R2')) { fx.toast('Shuffle already used'); return; }
+    Ads.reward('R2', function () { game.boosters.shuffle++; if (!game.shuffle()) fx.toast('Shuffle saved for later'); });
+    return;
+  }
+  if (id === 'bed') {
+    if (bedCount() >= 3) { fx.toast('All beds are out'); return; }
+    if (game.boosters.bed > 0) { game.addBed(); return; }
+    if (!game.inputOpen()) return;
+    if (!Ads.rewardReady('R2')) { fx.toast('Extra bed already used'); return; }
+    Ads.reward('R2', function () { game.boosters.bed++; game.addBed(); });
+    return;
+  }
+  if (id === 'ad_double') {
+    if (winDoubled) return;
+    Ads.reward('R1', function () { winDoubled = true; game.coins += CORE.CONFIG.coinsPerLevel; fx.rewardPopup('Double Coins!', CORE.CONFIG.coinsPerLevel); saveProgress(); });
+    return;
+  }
+  if (id === 'pod_video' || id === 'gift_ad') {
+    var R4 = ADS.rewarded.R4;
+    if (!Ads.rewardReady('R4')) { var cd = Ads.rewardCooldown('R4'); fx.toast(cd > 0 ? 'Next gift in ' + Math.ceil(cd) + 's' : 'No video available right now'); return; }
+    Ads.reward('R4', function () { game.coins += R4.coins; Anim.coinPillBounce = 1; Sound.coin(); fx.rewardPopup('Gift Pod!', R4.coins); saveProgress(); });
+    return;
+  }
+  if (id === 'boost_ad') {
+    Ads.reward('R5', function () { boostTaken = true; game.boosters.bed++; game.addBed(); fx.toast('Extra bed ready!'); });
+    return;
+  }
+  if (id === 'rescue_ad') {
+    Ads.reward('R3', function () {
+      game.resume(); uiPanel = 'settings';
+      game.boosters.shuffle++; game.boosters.bed++;
+      if (bedCount() < 3) game.addBed();
+      fx.toast('Rescued! +1 bed and +1 shuffle', 2.2);
+    });
+    return;
+  }
+  if (id === 'rescue_undo') { game.resume(); uiPanel = 'settings'; game.undoMove(); return; }
+  if (id === 'close' || id === 'resume') { var wasPanel = uiPanel; game.resume(); uiPanel = 'settings'; if (wasPanel !== 'rescue') Ads.tryInter('I_panel'); return; }
+  if (id === 'restart') { uiPanel = 'settings'; Ads.tryInter('I_restart', function () { game.restartLevel(); }); return; }
   if (id === 'sound') { Sound.on = !Sound.on; saveProgress(); return; }
   if (id === 'gfx') { gfxFlat = !gfxFlat; Platform.setFlatGraphics(gfxFlat); saveProgress(); return; }
-  if (id.indexOf('level') === 0) { game.loadLevel(parseInt(id.slice(5), 10)); return; }
+  if (id.indexOf('level') === 0) { var li = parseInt(id.slice(5), 10); uiPanel = 'settings'; Ads.tryInter('I_select', function () { game.loadLevel(li); }); return; }
   if (id === 'verify') {
     var r = CORE.verifyAllLevels();
     devResult = r.map(function (o) { return 'L' + o.level + ' [' + o.rule + '] ' + (o.valid ? 'valid' : 'INVALID') + ', ' + (o.solved ? 'solved in ' + o.solutionMoves + ' moves' : 'NOT solved') + ' (' + o.nodes + ' nodes)'; });
     Platform.log(JSON.stringify(r));
     return;
   }
-  if (id === 'next') { if (game.levelIndex + 1 >= GAME_CONFIG.maxLevel) { fx.toast('You finished every level!'); return; } game.nextLevel(); return; }
-  if (id === 'replay') { game.restartLevel(); return; }
+  if (id === 'next') {
+    if (game.levelIndex + 1 >= GAME_CONFIG.maxLevel) { fx.toast('You finished every level!'); return; }
+    if (winDoubled) { game.nextLevel(); return; }                 // just watched a rewarded ad: no interstitial
+    Ads.tryInter('I_next', function () { game.nextLevel(); }); return;
+  }
+  if (id === 'replay') { Ads.tryInter('I_restart', function () { game.restartLevel(); }); return; }
 }
 

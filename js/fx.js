@@ -2,6 +2,7 @@
 var game;
 var fx = {
   onLoad: function () {
+    winDoubled = false; boostTaken = false; levelStartT = Anim.time;
     Anim.reset(); Anim.displayStars = game.stars; Anim.hintMove = null;
     PODS[1].icon = 'red'; PODS[1].mood = 'determined';
     saveProgress(); computeHint();
@@ -46,7 +47,10 @@ var fx = {
   onShuffle: function () { Anim.hintMove = null; },
   onBedAdded: function () { Sound.pop(); },
   onNoMoves: function () {
-    fx.toast('No moves left — try Undo or Restart', 3); Sound.sad();
+    Sound.sad();
+    setTimeout(function () {                         // let the sad faces land, then offer the rescue popup
+      if (game.state === S.READY && !CORE.hasAnyMove(game.board, game.rule()) && game.pause()) uiPanel = 'rescue';
+    }, 1200);
     Object.keys(Anim.visuals).forEach(function (id) { setMood(Anim.visuals[id], 'sad', 2.6); });
   },
   onWin: function () { Anim.winT = 0; Sound.win(); Platform.vibrate(false); spawnConfetti(); saveProgress(true); },

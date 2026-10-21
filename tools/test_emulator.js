@@ -24,7 +24,7 @@ const ok = (c, m) => { console.log((c ? '  PASS ' : '  FAIL ') + m); if (!c) fai
 
 (async () => {
   await new Promise(r => server.listen(0, r));
-  const base = 'http://127.0.0.1:' + server.address().port + '/emulator/index.html';
+  const base = 'http://127.0.0.1:' + server.address().port + '/emulator/index.html';   // gameplay tests run with ads=none (ads: tools/test_ads.js)
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 900, height: 1000 } });
   const errors = [];
@@ -50,7 +50,7 @@ const ok = (c, m) => { console.log((c ? '  PASS ' : '  FAIL ') + m); if (!c) fai
   const settle = () => page.waitForFunction(() => { const g = MeowSort.game; return g.state === 'READY' || g.state === 'LEVEL_COMPLETE'; }, null, { timeout: 15000 });
 
   console.log('Emulator test on', DEVICE);
-  await page.goto(base + '?device=' + DEVICE);
+  await page.goto(base + '?ads=none&device=' + DEVICE);
   await page.evaluate(() => localStorage.clear());
   await page.reload(); await ready(); await page.waitForTimeout(600);
   ok(errors.length === 0, 'boots with no JS errors');
@@ -89,7 +89,7 @@ const ok = (c, m) => { console.log((c ? '  PASS ' : '  FAIL ') + m); if (!c) fai
   ok(saved && saved.level === 1 && saved.coins === won.coins, 'win is saved (next level + coins)');
 
   // Next level button (real tap on the win panel)
-  await tapLogical(270, 560); await page.waitForTimeout(400);
+  await tapLogical(270, 619); await page.waitForTimeout(400);
   ok(await page.evaluate(() => MeowSort.game.levelIndex === 1 && MeowSort.game.state === 'READY'), '"Next Level" button loads level 2');
   await shot('04_level2');
 
@@ -108,7 +108,7 @@ const ok = (c, m) => { console.log((c ? '  PASS ' : '  FAIL ') + m); if (!c) fai
   ok(await page.evaluate(() => MeowSort.game.state === 'PAUSED'), 'coin pill opens Free Coins panel');
   await shot('05_rewards');
   const before = await page.evaluate(() => MeowSort.game.coins);
-  await tapLogical(50 + 440 - 40 - 58, 230 + 62 + 44 + 21); await page.waitForTimeout(300);   // "Add" on the shortcut row
+  await tapLogical(50 + 440 - 40 - 58, 200 + 62 + 44 + 21); await page.waitForTimeout(300);   // "Add" on the shortcut row
   ok(await page.isVisible('#sheet'), 'shortcut tap opens the TikTok system sheet');
   await page.click('#sh-ok'); await page.waitForTimeout(900);
   const after = await page.evaluate(() => ({ coins: MeowSort.game.coins, claimed: MeowSort.minis().state.shortcutClaimed }));
@@ -122,7 +122,7 @@ const ok = (c, m) => { console.log((c ? '  PASS ' : '  FAIL ') + m); if (!c) fai
 
   // Audio quirks mode boots & plays SFX without errors
   errors.length = 0;
-  await page.goto(base + '?device=iphonese&ttquirks=1'); await ready(); await page.waitForTimeout(300);
+  await page.goto(base + '?ads=none&device=iphonese&ttquirks=1'); await ready(); await page.waitForTimeout(300);
   const m2 = await page.evaluate(() => MeowSort.game.hint());
   if (m2) { await tapSlot(m2.src, m2.idx); await tapSlot(m2.dst, -1); await settle(); }
   ok(errors.length === 0, 'ttquirks (no AudioParam ramps) → no errors on iPhone SE');
@@ -136,18 +136,18 @@ const ok = (c, m) => { console.log((c ? '  PASS ' : '  FAIL ') + m); if (!c) fai
   // shelf plank, bed, booster button, HUD coin pill, settings gear (all gradient fills drawn after rgba shadows)
   const probes = [[150, 273], [204, 792], [120, 915], [70, 50], [486, 905]];
   const delta = (a, b) => Math.max(...a.map((p, i) => Math.max(...p.map((c, k) => Math.abs(c - b[i][k])))));
-  await page.goto(base + '?device=iphone14'); await ready();
+  await page.goto(base + '?ads=none&device=iphone14'); await ready();
   const clean = await px(probes);
-  await page.goto(base + '?device=iphone14&gradquirk=1&gradfix=0'); await ready();
+  await page.goto(base + '?ads=none&device=iphone14&gradquirk=1&gradfix=0'); await ready();
   const broken = await px(probes);
   ok(delta(clean, broken) > 40, 'gradquirk without fix reproduces the device bug (max Δ ' + delta(clean, broken) + ')');
   for (const mode of ['gradquirk=1', 'gradquirk=1&ttquirks=1']) {
-    await page.goto(base + '?device=iphone14&' + mode); await ready();
+    await page.goto(base + '?ads=none&device=iphone14&' + mode); await ready();
     const got = await px(probes);
     ok(delta(clean, got) <= 6, 'gradient quirk fixed [' + mode + '] (max Δ ' + delta(clean, got) + ' vs clean render)');
   }
   // Flat is the default on native; Settings → Graphics switches to Gradient (beta) and persists
-  await page.goto(base + '?device=iphone14'); await page.evaluate(() => localStorage.clear()); await page.reload(); await ready();
+  await page.goto(base + '?ads=none&device=iphone14'); await page.evaluate(() => localStorage.clear()); await page.reload(); await ready();
   ok(await page.evaluate(() => MeowSort.platform.renderMode() === 'flat'), 'render mode defaults to flat');
   await tapLogical(486, 898); await page.waitForTimeout(300);
   await tapLogical(270, 200 + 490 + 22); await page.waitForTimeout(200);

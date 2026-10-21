@@ -187,6 +187,85 @@
     console.warn('[emu] gradquirk: gradient fills inherit the alpha of the last DRAWN solid fill');
   }
 
+  /* ---- fake TikTok ads (createRewardedVideoAd / createInterstitialAd) ----
+     ?fakeads=0 off · ?adfill=0 no fill · ?addur=N seconds (default 3) · ?adauto=1 auto-complete (tests)
+     Rewarded: "Close" before the countdown ends → isEnded:false (no reward). */
+  if (Q.fakeads === undefined) Q.fakeads = '1';
+  var adLayer = null;
+  function adShow(kind, onDone) {
+    var dur = +(Q.addur || 3), left = dur;
+    adLayer = document.createElement('div');
+    adLayer.id = 'fakead';
+    adLayer.style.cssText = 'position:absolute;inset:0;z-index:5;background:#111;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;font:600 16px system-ui';
+    adLayer.innerHTML = '<div style="font-size:13px;opacity:.6">' + (kind === 'rv' ? 'REWARDED' : 'INTERSTITIAL') + ' · fake ad</div>' +
+      '<div style="font-size:42px">📺 Meow Ad</div><div id="adcd"></div>' +
+      '<button id="adclose" style="position:absolute;top:' + (D.top + 50) + 'px;right:14px;background:#333;color:#fff;border:1px solid #777;border-radius:16px;padding:6px 14px;font:600 14px system-ui">Close</button>';
+    phone.appendChild(adLayer);
+    var cd = adLayer.querySelector('#adcd'), done = false;
+    function tick() { cd.textContent = left > 0 ? (kind === 'rv' ? 'Reward in ' : 'Skip in ') + left + 's' : (kind === 'rv' ? 'Reward earned ✓' : 'You can close'); }
+    tick();
+    var iv = setInterval(function () { left--; tick(); if (left <= 0) { clearInterval(iv); if (Q.adauto === '1') close(); } }, 1000);
+    function close() { if (done) return; done = true; clearInterval(iv); adLayer.remove(); adLayer = null; onDone(left <= 0); }
+    adLayer.querySelector('#adclose').onclick = function () { if (kind === 'it' && left > 0 && dur > 2) return; close(); };
+    if (Q.adauto === '1' && dur <= 0) close();
+  }
+  function makeAd(kind, opts) {
+    var closeCbs = [], errCbs = [];
+    console.log('[emu] create ' + (kind === 'rv' ? 'RewardedVideoAd' : 'InterstitialAd') + ' ' + opts.adUnitId);
+    return {
+      show: function () {
+        return new Promise(function (res, rej) {
+          if (Q.adfill === '0') { var e = { errMsg: 'no fill', errorCode: 1004 }; errCbs.forEach(function (f) { f(e); }); rej(e); return; }
+          if (adLayer) { rej({ errMsg: 'already showing' }); return; }
+          console.log('[emu] ad show ' + kind);
+          res();
+          adShow(kind, function (ended) { console.log('[emu] ad close ' + kind + ' isEnded=' + ended); closeCbs.forEach(function (f) { f(kind === 'rv' ? { isEnded: ended } : undefined); }); });
+        });
+      },
+      load: function () { return Promise.resolve(); },
+      onClose: function (f) { closeCbs.push(f); }, offClose: function (f) { closeCbs = closeCbs.filter(function (g) { return g !== f; }); },
+      onError: function (f) { errCbs.push(f); }, offError: function (f) { errCbs = errCbs.filter(function (g) { return g !== f; }); }
+    };
+  }
+
+  /* ---- CommonJS require() shim (TikTok runtime has require; the browser does not) ----
+     ./hs-config.js and ./hs/*.js are loaded from the package folder synchronously.
+     ?hsfake=1 serves a fake HS SDK (API as assumed in native/src/hs_native.js). */
+  var modCache = {};
+  window.require = function (p) {
+    var key = p.replace(/^\.\//, '');
+    if (modCache[key]) return modCache[key].exports;
+    if (Q.hsfake === '1' && key === 'hs/hs-game.js') {
+      var give = [];
+      modCache[key] = { exports: {
+        init: function (c) { console.log('[emu] fake HS init', c.gameId, c.testMode ? 'test' : 'live'); },
+        canShowAd: function (place) { return Q.adfill !== '0'; },
+        onGive: function (f) { give.push(f); },
+        showAd: function (place, cb) {
+          var kind = /^Inter/.test(place) ? 'it' : 'rv';
+          return new Promise(function (res, rej) {
+            if (Q.adfill === '0') { rej({ errMsg: 'no fill' }); return; }
+            adShow(kind, function (ended) {
+              if (kind === 'rv' && ended) give.forEach(function (f) { f({ place: place, item: { category: 'ad_effect' } }); });
+              res({ isEnded: ended });
+            });
+          });
+        }
+      } };
+      return modCache[key].exports;
+    }
+    if (Q.hsfake === '1' && key === 'hs-config.js') { modCache[key] = { exports: { gameId: 'emu-game', sdkKey: 'sk_test_emu', testMode: true, places: {} } }; return modCache[key].exports; }
+    if (!window.__pkgFiles) {
+      try { var lx = new XMLHttpRequest(); lx.open('GET', '../emulator/pkgfiles.json', false); lx.send(); window.__pkgFiles = lx.status === 200 ? JSON.parse(lx.responseText) : []; } catch (e) { window.__pkgFiles = []; }
+    }
+    if (window.__pkgFiles.indexOf(key) < 0) throw new Error('Cannot find module ' + p);
+    var xhr = new XMLHttpRequest(); xhr.open('GET', key, false); xhr.send();
+    if (xhr.status !== 200) throw new Error('Cannot find module ' + p);
+    var mod = { exports: {} }; modCache[key] = mod;
+    (new Function('module', 'exports', 'require', xhr.responseText))(mod, mod.exports, window.require);
+    return mod.exports;
+  };
+
   var showCbs = [], hideCbs = [];
   function fireHide() { hideCbs.forEach(function (f) { try { f(); } catch (e) { console.error(e); } }); }
   function fireShow(q) { showCbs.forEach(function (f) { try { f({ query: q || {}, scene: '' }); } catch (e) { console.error(e); } }); }
@@ -215,6 +294,8 @@
     getStorageSync: function (k) { var v = localStorage.getItem(k); return v === null ? '' : v; },
     setStorageSync: function (k, v) { localStorage.setItem(k, typeof v === 'string' ? v : JSON.stringify(v)); },
     createWebAudioContext: createWebAudioContext,
+    createRewardedVideoAd: function (o) { return Q.fakeads === '1' ? makeAd('rv', o) : null; },
+    createInterstitialAd: function (o) { return Q.fakeads === '1' ? makeAd('it', o) : null; },
     createInnerAudioContext: function () { return { play: function () {}, stop: function () {}, onEnded: function () {} }; },
     onShow: function (f) { showCbs.push(f); }, onHide: function (f) { hideCbs.push(f); },
     vibrateShort: function () { if (navigator.vibrate) navigator.vibrate(15); }, vibrateLong: function () { if (navigator.vibrate) navigator.vibrate(400); },

@@ -27,6 +27,14 @@ function startGame() {
   if (Platform.query.gfx === 'flat') gfxFlat = true;
   Platform.setFlatGraphics(gfxFlat);
   game.loadLevel(startLevel);
+  // I_break: a natural pause right after a shelf match finishes (never mid-move)
+  var fms = game.finishMatchSequence;
+  game.finishMatchSequence = function () {
+    var r = fms.apply(this, arguments);
+    if (this.state === S.READY) Ads.tryInter('I_break');
+    return r;
+  };
+  Ads.init();
   booted = true;
   Platform.log('Meow Sort v' + VERSION + ' build ' + BUILD + ' render=' + Platform.renderMode());
   last = Platform.now();
@@ -54,7 +62,7 @@ function boot() {
 
   // Touch input (one active finger drives presses; extra fingers are ignored).
   Platform.onTouch('start', function (p) {
-    if (!booted || !game) return;
+    if (!booted || !game || Ads.showing) return;
     Sound.init();
     if (touchState.id !== null && touchState.id !== p.id) return;
     touchState.id = p.id;

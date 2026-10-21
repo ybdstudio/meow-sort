@@ -547,7 +547,7 @@ function drawSettings(game) {
     if (devResult) devResult.forEach(function (line, k) { text(line, x + w / 2, y + 610 + k * 15, 11, '#ffffff'); });
   }
   text('Version ' + VERSION + '  ·  build ' + BUILD, x + w / 2, y + 556, 15, '#5b2d0b');
-  text('render: ' + Platform.renderMode(), x + w / 2, y + 578, 12, 'rgba(122,68,16,0.75)');
+  text('render: ' + Platform.renderMode() + '  ·  ads: ' + Ads.provider + ' / ' + ADS.profile, x + w / 2, y + 578, 12, 'rgba(122,68,16,0.75)');
 }
 
 function drawWin(game) {
@@ -557,7 +557,7 @@ function drawWin(game) {
   ctx.fillStyle = 'rgba(10,20,50,0.55)'; ctx.fillRect(-300, -300, LW + 600, LH + 600);
   var sc = easeOutBack(clamp((t - 0.5) / 0.4, 0, 1));
   ctx.translate(270, 480); ctx.scale(sc, sc); ctx.translate(-270, -480);
-  var x = 80, y = 300, w = 380, h = 390;
+  var x = 80, y = 300, w = 380, h = 440;
   // sunburst behind the celebrating cat
   ctx.save(); ctx.translate(270, 250); ctx.rotate(Anim.time * 0.4);
   for (var r = 0; r < 12; r++) {
@@ -573,12 +573,14 @@ function drawWin(game) {
     if (st > 0) { ctx.save(); ctx.translate(x + w / 2 + (i - 1) * 78, y + 92 - (i === 1 ? 14 : 0)); var s2 = easeOutBack(st); ctx.scale(s2, s2); drawStar(0, 0, i === 1 ? 36 : 30); ctx.restore(); }
   }
   text('Groups sorted: ' + game.stars, x + w / 2, y + 160, 19, '#5b2d0b');
-  text('Moves: ' + game.moves + '   Coins +' + CORE.CONFIG.coinsPerLevel, x + w / 2, y + 190, 17, '#7a4410');
+  text('Moves: ' + game.moves + '   Coins +' + CORE.CONFIG.coinsPerLevel * (winDoubled ? 2 : 1), x + w / 2, y + 190, 17, '#7a4410');
   ctx.restore();
   ctx.save(); ctx.globalAlpha = a; ctx.translate(270, 480); ctx.scale(sc, sc); ctx.translate(-270, -480);
   uiButtonsScaled(sc, function () {
-    uiButton('next', 'Next Level', x + 60, y + 230, 260, 60, GREEN, 22);
-    uiButton('replay', 'Replay', x + 100, y + 306, 180, 48, BLUE, 18);
+    if (winDoubled) uiButton('ad_done', 'Coins doubled ✓', x + 60, y + 222, 260, 56, GREY, 19);
+    else if (Ads.rewardReady('R1')) adButton('ad_double', 'x2 Coins', x + 60, y + 222, 260, 56, ORANGE, 22);
+    uiButton('next', 'Next Level', x + 60, y + 290, 260, 58, GREEN, 22);
+    uiButton('replay', 'Replay', x + 110, y + 362, 160, 44, BLUE, 17);
   });
   ctx.restore();
 }
@@ -653,13 +655,17 @@ function render() {
   drawForeground(-view.offX / view.scale);
   var pid = pressed.id && Anim.time - pressed.t < 0.15 ? pressed.id : null;
   drawBooster(BTN.undo, drawIconUndo, 'Free', game.canUndo() || game.state === S.MOVING && game.history.length > 0, pid === 'undo');
-  drawBooster(BTN.shuffle, drawIconShuffle, game.boosters.shuffle > 0 ? 'Free' : 'Used', game.boosters.shuffle > 0, pid === 'shuffle');
-  drawBooster(BTN.bed, drawIconBed, game.boosters.bed > 0 && beds.length < 3 ? 'Free' : 'Used', game.boosters.bed > 0 && beds.length < 3, pid === 'bed');
+  var adR2 = Ads.rewardReady('R2');
+  drawBooster(BTN.shuffle, drawIconShuffle, game.boosters.shuffle > 0 ? 'Free' : (adR2 ? '▶ Ad' : 'Used'), game.boosters.shuffle > 0 || adR2, pid === 'shuffle');
+  drawBooster(BTN.bed, drawIconBed, beds.length >= 3 ? 'Max' : (game.boosters.bed > 0 ? 'Free' : (adR2 ? '▶ Ad' : 'Used')), beds.length < 3 && (game.boosters.bed > 0 || adR2), pid === 'bed');
   drawSettingsBtn(pid === 'settings');
   drawHint(game);
+  drawBoostChip();
+  drawPodBadge();
   if (game.state === S.PAUSED) drawOverlayPanel(game);
   if (game.state === S.LEVEL_COMPLETE) drawWin(game);
   drawRewardPopup();
   drawToast();
+  drawAdOverlay();
 }
 

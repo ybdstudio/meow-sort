@@ -5,6 +5,9 @@ var MeowSort = Platform.global.MeowSort = {
   core: CORE, get game() { return game; }, S: S, anim: Anim, pods: PODS, sprites: SPRITES,
   verifyLevels: function () { var r = CORE.verifyAllLevels(); Platform.log(JSON.stringify(r)); return r; },
   minis: function () { return Minis; },
+  ads: function () { return Ads; },
+  ui: function () { return { panel: uiPanel, winDoubled: winDoubled, rewardPopup: !!rewardPopup }; },
+  openPanel: function (name) { if (game.pause()) uiPanel = name; return game.state; },
   view: function () { return view; },
   // Performs the solver's next move through the same selectCat/selectShelf path a player uses.
   step: function () {

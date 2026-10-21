@@ -10,6 +10,7 @@ function frame(now) {
 function step(dt) {
   Anim.time += dt;
   if (rewardPopup) { rewardPopup.t += dt; updateParticles(game.state === S.PAUSED ? dt : 0); }
+  if (Ads.showing) return;                           // game frozen while an ad (or the ad-break notice) is up
   if (Anim.toastMsg && game.state === S.PAUSED) { Anim.toastMsg.t += dt; if (Anim.toastMsg.t > Anim.toastMsg.dur || !Anim.toastMsg.text) Anim.toastMsg = null; }
   if (game.state === S.PAUSED) return;
   var moving = reconcile(game, dt);

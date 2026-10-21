@@ -1,0 +1,3 @@
+node_modules/
+# HS SDK key lives here — never commit
+native/hs-config.json

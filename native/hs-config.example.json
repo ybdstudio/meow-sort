@@ -1,0 +1,15 @@
+{
+  "_comment": "HyperScale SDK config. NOT committed (see .gitignore). Copied to the package as hs-config.js only when native/hs/hs-game.js exists. places: our placement label -> exact HS dashboard placement name.",
+  "gameId": "7698936360916305941",
+  "clientKey": "mgmisbgk8c3rfopi",
+  "sdkKey": "sk_live_REPLACE_ME",
+  "testMode": true,
+  "places": {
+    "R1": "R1",
+    "R2": "R2",
+    "R3": "R3",
+    "R4": "R4",
+    "R5": "R5",
+    "Inter1": "Inter1"
+  }
+}
