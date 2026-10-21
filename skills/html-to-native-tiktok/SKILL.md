@@ -38,11 +38,12 @@ res/...              ← subpackage assets
 - Missions need TikTok ≥ 41.0: `addShortcut`, `getShortcutMissionReward` → `{canReceiveReward}`,
   `startEntranceMission`, `getEntranceMissionReward` → `{canReceiveReward}`, (0.32+) `reportMissionRewardGranted`.
   Share: `shareAppMessage({title, query})`. Silent login: `login()`.
-- **Canvas quirk (TikTok Krypton canvas, seen on device: no error, just faded UI):** a gradient/pattern assigned to `fillStyle`
-  inherits the **alpha of the last solid colour** set before it. The common pattern
-  `fillStyle='rgba(0,0,0,0.3)'` (shadow) → `fillStyle=gradient` paints the gradient at 30%, so shelves, buttons,
-  panels and pills look see-through. Strokes, text, solid fills and `drawImage` are unaffected, and nothing is logged.
-  The adapter must set an opaque colour before every gradient (see Phase 2).
+- **Canvas quirk (TikTok Krypton canvas, seen on device: no error, just faded UI):** a gradient fill paints with the
+  **alpha of the last solid colour that was DRAWN**. The common pattern `fillStyle='rgba(0,0,0,0.3)'; fill()` (shadow)
+  → `fillStyle=gradient; fill()` paints the gradient at 30%, so shelves, buttons, panels and pills look see-through.
+  Strokes, text, solid fills and `drawImage` are unaffected, and nothing is logged.
+  State syncs to native **lazily, on draw**: re-assigning `fillStyle='#000'` before the gradient does NOT help
+  (tried, failed on device). The fix is to never send a translucent colour to native at all (see Phase 2 SafeContext).
 - Limits (non-Unity): main package ≤ 4 MB (total minus subpackage roots), total ≤ 30 MB. `game.json` uses lowercase `subpackages`.
 
 ## Checklist
@@ -73,11 +74,20 @@ res/...              ← subpackage assets
 - [ ] `native/src/adapter.js` (`Platform`): canvas, offscreen canvas, images, storage (JSON strings), audio
       (`setValueAtTime` before ramps; fall back when ramps are missing), safe area + capsule normalisation,
       touch, lifecycle, launch query, subpackage, `ctx.ellipse` polyfill, try/catch around every SDK call
-- [ ] **Gradient alpha fix** in `adapter.patchContext(ctx)`: wrap the `fillStyle`/`strokeStyle` setters on the context
-      instance (`Object.defineProperty` with the prototype's descriptor) so that assigning an object (gradient/pattern)
-      first sets `'#000000'`, then the value. Fallback when the host object rejects it: patch
-      `createLinearGradient/createRadialGradient/createPattern` to set `fillStyle='#000000'` first. Log which path is
-      active, and allow a launch-query switch (`gradfix=0`) for A/B on device
+- [ ] **SafeContext** (`adapter.patchContext(ctx)` returns it; the game uses it as `ctx`, unchanged code): a plain JS
+      wrapper we own around the native 2D context, so interception is guaranteed (do not rely on
+      `defineProperty` on host objects):
+  - [ ] `fillStyle`/`strokeStyle` setters parse colours: `rgba(r,g,b,a)` / `#rrggbbaa` → opaque `rgb(r,g,b)` + alpha `a`
+        (cache parsed colours, bounded size); gradients come from wrapper `createLinear/RadialGradient` (record stops)
+  - [ ] track `globalAlpha`, `fillStyle`, `strokeStyle` in our own `save/restore` stack
+  - [ ] before **every** `fill/fillRect/fillText/stroke/strokeRect/strokeText/drawImage`: set native `globalAlpha =
+        userAlpha × colourAlpha` and native style, so native only ever sees opaque solid colours
+  - [ ] forward everything else (paths, transforms, text props, `measureText`, `clip`); `ellipse` polyfill
+  - [ ] `gradfix=0` launch query returns the raw context (A/B); expose `renderMode()` (`safe`/`flat`/`raw`)
+- [ ] **Graphics fallback toggle** in Settings (`Graphics: Gradient / Flat`, saved): flat mode draws each gradient as the
+      average of its stops, so a device-specific canvas bug can be bypassed without a new build
+- [ ] **Version + build stamp visible** in Settings and on the loading screen (`Version X.Y.Z · build <UTC time>`,
+      build script injects the stamp) and logged on boot with the render mode, so device reports name the exact build
 - [ ] Avoid `shadowBlur` for glows on device (fallback: radial gradient halo)
 - [ ] `native/src/ui_native.js`: loading screen with progress, fatal-error screen (no DOM), panels the game
       needs, and press handling: buttons fire on release inside the button (`buttonStart/Move/End`), board taps on start
@@ -109,9 +119,11 @@ res/...              ← subpackage assets
   - [ ] boots with no JS errors · touch selects/moves · HUD inside safe area and below the capsule
   - [ ] a level can be finished by real taps · save/load across reload · onHide saves
   - [ ] mission sheets + reward popup, no double reward · `?ttquirks=1` audio quirks · small (iPhone SE) and notched devices
-  - [ ] the emulator must **simulate device canvas quirks** (`?ttquirks=1` / `?gradquirk=1`: override the
-        `CanvasRenderingContext2D.prototype.fillStyle` setter to remember the last solid alpha, and multiply
-        `globalAlpha` by it in `fill/fillRect/fillText` while a gradient is active); a plain browser hides this bug
+  - [ ] the emulator must **simulate device canvas quirks** (`?ttquirks=1` / `?gradquirk=1`): remember the alpha of the
+        last solid colour actually used in `fill/fillRect/fillText` (lazy sync: assignments alone don't count) and
+        multiply `globalAlpha` by it while a gradient is active; a plain browser hides this bug
+  - [ ] when a device bug comes back after a "fix", first make the emulator simulation reproduce the device result
+        **including the failed fix** (the failed build must fail the test), then fix, then re-run
   - [ ] pixel-compare test: read the same points (shelf, bed, button, HUD pill) from a clean render, a quirk render
         with the fix off (must differ, which proves the simulation works) and a quirk render with the fix on (must match)
   - [ ] automate it: `tools/test_emulator.js` (Playwright) taps the canvas via real pointer events
@@ -131,8 +143,11 @@ res/...              ← subpackage assets
 - **Subpackage error**: `subpackages` must be lowercase, every `root` must exist and contain `game.js`.
 - **DevTool won't run / upload**: `appid` missing or still the placeholder in `project.config.json`.
 - **UI see-through on device (shelves, beds, buttons, panels, popups faded; cats/images fine; vConsole shows no error)**:
-  the Krypton gradient-alpha quirk. Add the gradient alpha fix to the adapter, reproduce it in the emulator with
-  `?gradquirk=1` first, then verify by pixel-comparing against a clean render.
+  the Krypton gradient-alpha quirk. Use SafeContext (not a fillStyle reset, which fails because of lazy sync),
+  reproduce it in the emulator with `?gradquirk=1` first, verify by pixel-comparing against a clean render. If it still
+  shows on a device, check the build stamp in Settings (stale upload?), then try `Graphics: Flat`.
+- **"Still the same" after an update**: compare the version/build shown in Settings with the build you produced;
+  DevTool/TikTok may still be running a previous upload or a cached package.
 - **Audio freezes**: AudioParam ramps; make sure the adapter sets values first and falls back.
 - **HUD off-screen / under capsule**: normalise safeArea + `getMenuButtonBoundingClientRect` in the adapter.
 - **Touch not working**: touch field names; log `res.changedTouches[0]` on device.
