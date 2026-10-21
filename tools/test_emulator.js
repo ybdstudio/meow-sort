@@ -146,17 +146,30 @@ const ok = (c, m) => { console.log((c ? '  PASS ' : '  FAIL ') + m); if (!c) fai
     const got = await px(probes);
     ok(delta(clean, got) <= 6, 'gradient quirk fixed [' + mode + '] (max Δ ' + delta(clean, got) + ' vs clean render)');
   }
-  // Graphics: Flat toggle (Settings) is opaque too and persists
-  await page.goto(base + '?device=iphone14&gradquirk=1'); await ready();
+  // Flat is the default on native; Settings → Graphics switches to Gradient (beta) and persists
+  await page.goto(base + '?device=iphone14'); await page.evaluate(() => localStorage.clear()); await page.reload(); await ready();
+  ok(await page.evaluate(() => MeowSort.platform.renderMode() === 'flat'), 'render mode defaults to flat');
   await tapLogical(486, 898); await page.waitForTimeout(300);
   await tapLogical(270, 200 + 490 + 22); await page.waitForTimeout(200);
-  const flat = await page.evaluate(() => ({ mode: MeowSort.platform.renderMode(), saved: JSON.parse(localStorage.getItem('meowsort_native_v1')).gfxFlat }));
-  ok(flat.mode === 'flat' && flat.saved === true, 'Settings → Graphics: Flat switches render mode and is saved');
-  await tapLogical(270, 200 + 60 + 28); await page.waitForTimeout(300);
-  const fl = await px(probes);
-  ok(fl.every(p => p[0] + p[1] + p[2] > 120), 'flat mode renders opaque shapes ' + JSON.stringify(fl));
-  await shot('09_flat');
-  await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('meowsort_native_v1')); s.gfxFlat = false; localStorage.setItem('meowsort_native_v1', JSON.stringify(s)); });
+  const g1 = await page.evaluate(() => ({ mode: MeowSort.platform.renderMode(), saved: JSON.parse(localStorage.getItem('meowsort_native_v1')).gfxMode }));
+  ok(g1.mode === 'safe' && g1.saved === 'gradient', 'Graphics toggle → Gradient (beta), saved');
+  await page.reload(); await ready();
+  ok(await page.evaluate(() => MeowSort.platform.renderMode() === 'safe'), 'gradient choice survives reload');
+  await page.evaluate(() => localStorage.clear()); await page.reload(); await ready();
+
+  // Selection glow is the baked halo (no gradient): a point beside the lifted cat turns yellow
+  await page.waitForFunction(() => window.MeowSort && MeowSort.platform && true);
+  const selc = await page.evaluate(() => { const m = MeowSort.game.hint(); MeowSort.game.selectCat(m.src, m.idx); const c = MeowSort.core.getC(MeowSort.game.board, m.src); return { id: c.id, side: c.side, i: c.cats.length - 1 }; });
+  await page.waitForTimeout(700);
+  const gp = await page.evaluate((s) => {
+    const p = MeowSort.slotScreen(s.id, s.i), v = MeowSort.view();
+    const lx = (p.x - v.offX) / v.scale + (s.side === 'left' ? 30 : -30), ly = (p.y - v.offY) / v.scale - 40;
+    const g = document.querySelector('#phone canvas').getContext('2d');
+    const d = g.getImageData(Math.round((v.offX + lx * v.scale) * v.dpr), Math.round((v.offY + ly * v.scale) * v.dpr), 1, 1).data;
+    return [d[0], d[1], d[2]];
+  }, selc);
+  ok(gp[0] > 150 && gp[1] > 130 && gp[2] < 160, 'selected cat has a soft yellow halo ' + JSON.stringify(gp));
+  await shot('09_selected_glow');
   await shot('08_gradquirk_fixed');
   await shot('07_iphonese');
 

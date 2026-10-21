@@ -195,10 +195,10 @@ function drawCatSprite(color, mood, x, footY, sx, sy, rot, alpha, glow, size) {
       blitSprite(spr, -w / 2, -h + 4); blitSprite(spr, -w / 2, -h + 4);
       ctx.shadowBlur = 0;
     } else {
-      // native-friendly glow: soft radial halo behind the sprite (no shadowBlur)
-      var hg = ctx.createRadialGradient(0, -h * 0.48, w * 0.2, 0, -h * 0.48, w * 0.62);
-      hg.addColorStop(0, 'rgba(255,236,120,0.95)'); hg.addColorStop(0.7, 'rgba(255,224,70,0.55)'); hg.addColorStop(1, 'rgba(255,224,70,0)');
-      ctx.fillStyle = hg; ctx.beginPath(); ctx.ellipse(0, -h * 0.48, w * 0.62, h * 0.56, 0, 0, Math.PI * 2); ctx.fill();
+      // native glow: pre-baked blurred silhouette (drawImage only; no gradient, no shadowBlur)
+      var ga = ctx.globalAlpha;
+      blitGlow(color, spr);
+      ctx.globalAlpha = ga;
     }
   }
   blitSprite(spr, -w / 2, -h + 4);
@@ -541,7 +541,7 @@ function drawSettings(game) {
   }
   ctx.fillStyle = 'rgba(122,68,16,0.12)'; rr(ctx, x + 50, y + 440, 300, 38, 16); ctx.fill();
   text('Rule: only the outermost cat moves', x + w / 2, y + 459, 15, '#7a4410');
-  uiButton('gfx', 'Graphics: ' + (gfxFlat ? 'Flat' : 'Gradient'), x + 50, y + 490, 300, 44, GREY, 17);
+  uiButton('gfx', 'Graphics: ' + (gfxFlat ? 'Flat' : 'Gradient (beta)'), x + 50, y + 490, 300, 44, GREY, 17);
   if (Platform.debug) {
     uiButton('verify', 'Dev', x + 14, y + 18, 64, 34, GREY, 14);
     if (devResult) devResult.forEach(function (line, k) { text(line, x + w / 2, y + 610 + k * 15, 11, '#ffffff'); });

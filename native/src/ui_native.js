@@ -6,7 +6,7 @@
    - press handling: buttons fire on release inside the same button
      (buttonStart / buttonMove / buttonEnd); board taps fire on touch start. */
 var uiPanel = 'settings';
-var gfxFlat = false;           // Settings → Graphics: Flat draws gradients as solid colours (saved)
+var gfxFlat = true;           // Settings → Graphics: Flat draws gradients as solid colours (saved)
 var rewardPopup = null;          // { title, coins, t }
 
 function openPanel(name) { if (game.pause()) { uiPanel = name; devResult = null; } else if (game.state === S.PAUSED) uiPanel = name; }

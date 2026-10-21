@@ -6,10 +6,17 @@
 var MOODS = CAT_ATLAS.moods;
 var SPRITES = {};
 var CAT_FACES = CAT_ATLAS.faces;      // eye/nose metadata (used for the pod icon crop)
+var GLOW = {};                        // GLOW[color] = { img, sx, sy, w, h } baked yellow halo (res/glow.png)
 
 function loadSprites(done) {
   Platform.loadImage(CAT_ATLAS.image, function (err, img) {
     if (err) { done(err); return; }
+    if (CAT_ATLAS.glowImage) Platform.loadImage(CAT_ATLAS.glowImage, function (e2, gimg) {
+      if (e2) { Platform.warn('glow atlas missing', e2); return; }      // optional: selection just shows no halo
+      Object.keys(CAT_ATLAS.glow).forEach(function (c) {
+        var f = CAT_ATLAS.glow[c]; GLOW[c] = { img: gimg, sx: f[0], sy: f[1], w: f[2], h: f[3] };
+      });
+    });
     Object.keys(CAT_ATLAS.frames).forEach(function (color) {
       SPRITES[color] = {};
       MOODS.forEach(function (mood) {
@@ -19,5 +26,12 @@ function loadSprites(done) {
     });
     done(null);
   });
+}
+// Baked halo around a sprite drawn at (-w/2, -h+4) in sprite space (same transform as blitSprite).
+function blitGlow(color, spr) {
+  var g = GLOW[color]; if (!g) return false;
+  var pad = CAT_ATLAS.glowPad;
+  ctx.drawImage(g.img, g.sx, g.sy, g.w, g.h, -spr.w / 2 - pad, -spr.h + 4 - pad, spr.w + pad * 2, spr.h + pad * 2);
+  return true;
 }
 function blitSprite(spr, dx, dy) { ctx.drawImage(spr.img, spr.sx, spr.sy, spr.w, spr.h, dx, dy, spr.w, spr.h); }

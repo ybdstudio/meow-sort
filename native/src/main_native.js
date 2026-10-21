@@ -17,12 +17,15 @@ function startGame() {
   if (saved) {
     if (typeof saved.coins === 'number') game.coins = saved.coins;
     if (typeof saved.sound === 'boolean') Sound.on = saved.sound;
-    if (saved.gfxFlat === true) { gfxFlat = true; Platform.setFlatGraphics(true); }
+    if (saved.gfxMode === 'gradient') gfxFlat = false;            // flat unless the player opted into gradients
     Minis.load(saved.minis);
   }
   Anim.displayCoins = game.coins;
   var startLevel = saved && typeof saved.level === 'number' ? Math.max(0, Math.min(saved.level, GAME_CONFIG.maxLevel - 1)) : 0;
   if (Platform.query.level) startLevel = Math.max(0, (parseInt(Platform.query.level, 10) || 1) - 1);
+  if (Platform.query.gfx === 'gradient') gfxFlat = false;
+  if (Platform.query.gfx === 'flat') gfxFlat = true;
+  Platform.setFlatGraphics(gfxFlat);
   game.loadLevel(startLevel);
   booted = true;
   Platform.log('Meow Sort v' + VERSION + ' build ' + BUILD + ' render=' + Platform.renderMode());
@@ -35,6 +38,7 @@ function startGame() {
 }
 
 function boot() {
+  Platform.setFlatGraphics(true);          // loading screen draws flat too
   resize();
   Platform.setFps(60);
   bootTick();
