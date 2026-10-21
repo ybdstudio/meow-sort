@@ -145,6 +145,10 @@ const ok = (c, m) => { console.log((c ? '  PASS ' : '  FAIL ') + m); if (!c) fai
   const m2 = await page.evaluate(() => MeowSort.game.hint());
   if (m2) { await tapSlot(m2.src, m2.idx); await tapSlot(m2.dst, -1); await settle(); }
   ok(errors.length === 0, 'ttquirks (no AudioParam ramps) → no errors on iPhone SE');
+  const snd = await page.evaluate(() => { const S = MeowSort.sound, b = S.bufs.select; let p = 0;
+    if (b) { const d = b.getChannelData(0); for (let i = 0; i < d.length; i++) p = Math.max(p, Math.abs(d[i])); }
+    return { n: Object.keys(S.bufs).length, legacy: S.legacy, peak: p }; });
+  ok(snd.n >= 11 && !snd.legacy && snd.peak > 0.7, 'SFX pre-rendered loud buffers (' + snd.n + ' sounds, select peak ' + snd.peak.toFixed(2) + ')');
 
   // Krypton gradient-alpha quirk: shelves/buttons must stay opaque (pixel check on a shelf plank + a booster button)
   const px = (q) => page.evaluate(async (q) => {

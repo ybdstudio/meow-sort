@@ -182,7 +182,7 @@ function updateFlyers(dt) {
     s.r = 14 + Math.sin(u2 * Math.PI) * 9;
     if (u2 >= 1) {
       Anim.starFlyers.splice(j, 1); Anim.displayStars++; Anim.starPillBounce = 1;
-      Sound.tone(1200, 0.08, 'sine', 0.08, 1600);
+      Sound.tick();
       spawnSparkles(tx, ty, 8, ['#ffd23f', '#ffffff']);
     }
   }

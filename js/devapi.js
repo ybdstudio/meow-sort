@@ -2,7 +2,7 @@
    Exposed as GameGlobal.MeowSort (window.MeowSort in the emulator) for automated tests. */
 var MeowSort = Platform.global.MeowSort = {
   ready: false, version: VERSION, platform: Platform,
-  core: CORE, get game() { return game; }, S: S, anim: Anim, pods: PODS, sprites: SPRITES,
+  core: CORE, sound: Sound, get game() { return game; }, S: S, anim: Anim, pods: PODS, sprites: SPRITES,
   verifyLevels: function () { var r = CORE.verifyAllLevels(); Platform.log(JSON.stringify(r)); return r; },
   minis: function () { return Minis; },
   ads: function () { return Ads; },
