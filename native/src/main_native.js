@@ -17,14 +17,10 @@ function startGame() {
   if (saved) {
     if (typeof saved.coins === 'number') game.coins = saved.coins;
     if (typeof saved.sound === 'boolean') Sound.on = saved.sound;
-    if (saved.gfxMode === 'gradient') gfxFlat = false;            // flat unless the player opted into gradients
   }
   Anim.displayCoins = game.coins;
   var startLevel = saved && typeof saved.level === 'number' ? Math.max(0, Math.min(saved.level, GAME_CONFIG.maxLevel - 1)) : 0;
   if (Platform.query.level) startLevel = Math.max(0, (parseInt(Platform.query.level, 10) || 1) - 1);
-  if (Platform.query.gfx === 'gradient') gfxFlat = false;
-  if (Platform.query.gfx === 'flat') gfxFlat = true;
-  Platform.setFlatGraphics(gfxFlat);
   game.loadLevel(startLevel);
   // I_break: a natural pause right after a shelf match finishes (never mid-move)
   var fms = game.finishMatchSequence;
@@ -36,7 +32,7 @@ function startGame() {
   Ads.init();
   HS.start();                              // login, dashboard config, cloud save, pending rewards — all inside the HS kit
   booted = true;
-  Platform.log('Meow Sort v' + VERSION + ' build ' + BUILD + ' render=' + Platform.renderMode());
+  Platform.log('Meow Sort v' + VERSION + ' build ' + BUILD);
   last = Platform.now();
   Platform.raf(frame);
   if (Platform.debug) MeowSort.verifyLevels();
@@ -44,7 +40,6 @@ function startGame() {
 }
 
 function boot() {
-  Platform.setFlatGraphics(true);          // loading screen draws flat too
   resize();
   Platform.setFps(60);
   loadLoadingArt();

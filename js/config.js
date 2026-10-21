@@ -1,7 +1,7 @@
 /* ===================== CONFIG =====================
    Build-level settings for Meow Sort. Everything here can be tuned without
    touching game logic. Rules/economy are merged into CORE.CONFIG at start-up. */
-var VERSION = '0.3.0';
+var VERSION = '0.4.0';
 var BUILD = 'dev';          // replaced by tools/build_native.js with the build time
 var GAME_NAME = 'Meow Sort';
 var STORE_KEY = 'meowsort_native_v1';
@@ -45,21 +45,28 @@ var GAME_CONFIG = {
      I_select  Level picked in Settings
      I_panel   closing Settings / Free Coins (aggressive profile)
      I_break   right after a shelf match completes, when no ad for a while (aggressive profile)
-   Profile 'ipu8' targets ~8 impressions per user in the first 5 minutes (docs/ADS_PLAN.md,
-   `node tools/sim_ads.js`). 'balanced' is the fallback if retention drops. */
+   Profile 'paced' (default) respects TikTok's >= 30 s interstitial cap; see docs/ADS_PLAN.md and
+   `node tools/sim_ads.js`. 'balanced' is lighter, 'ipu8' the old dense v0.3 profile. */
 var ADS = {
   enabled: true,
-  profile: 'ipu8',
+  profile: 'paced',
+  // TikTok refuses interstitials that come too soon ("interstitialAdShow:fail frequency controlled",
+  // seen on device at < 30 s). Every interstitial gap here is >= 30 s from the END of the last ad.
+  platformInterGap: 30,
   profiles: {
-    ipu8: {
-      interFirstDelay: 15,     // s after session start before the first interstitial
-      interMinLevel: 0,        // inter allowed from the end of level 1 (I_next) …
-      breakMinLevel: 1,        // … but never inside the tutorial: I_break only from level 2 on
-      interCooldown: 15,       // s between interstitials (TikTok may also refuse: error 11004 → skipped, no harm)
-      interAfterReward: 10,    // s after a rewarded ad before the next interstitial
-      breakAfterIdle: 15,      // I_break: s since the last ad of any kind (fires right after a shelf match)
-      triggers: { I_next: 1, I_restart: 1, I_select: 1, I_panel: 1, I_break: 1 },
-      maxInterPerSession: 40
+    paced: {                   // v0.4 default: fewer, well-spaced breaks (~1 interstitial / 1.5-2 min)
+      interFirstDelay: 30,     // s after session start before the first interstitial
+      interMinLevel: 1,        // never right after the tutorial
+      breakMinLevel: 2,        // I_break (after a match) only from level 3 on
+      interCooldown: 40,       // s between interstitials (>= TikTok's 30 s cap, measured from the end of the last ad)
+      interAfterReward: 25,    // s after a rewarded ad
+      breakAfterIdle: 60,      // I_break only if no ad at all for 60 s
+      triggers: { I_next: 1, I_restart: 1, I_select: 1, I_panel: 0, I_break: 1 },
+      maxInterPerSession: 30
+    },
+    ipu8: {                    // v0.3 (too dense for TikTok's cap — kept for reference / A/B)
+      interFirstDelay: 15, interMinLevel: 0, breakMinLevel: 1, interCooldown: 15, interAfterReward: 10,
+      breakAfterIdle: 15, triggers: { I_next: 1, I_restart: 1, I_select: 1, I_panel: 1, I_break: 1 }, maxInterPerSession: 40
     },
     balanced: {
       interFirstDelay: 45, interMinLevel: 1, interCooldown: 45, interAfterReward: 30,
@@ -79,6 +86,6 @@ var ADS = {
   },
   inter: { label: 'Inter1' },
   levelBoost: { label: 'Extra Bed', minLevel: 2 },   // level-start "+1 Bed" offer from level 3
-  breakNotice: 1.2,            // s "Ad break" notice before an interstitial
+  overlayDelay: 0.6,           // s before the dim "Ad playing" overlay shows (a refused ad never flashes the screen)
   safetyTimeout: 100,          // s: resume the game if the SDK never calls back
 };

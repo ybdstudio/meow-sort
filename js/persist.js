@@ -4,7 +4,7 @@
 function saveProgress(advance) {
   if (!game) return;
   var lvl = game.levelIndex + (advance ? 1 : 0);
-  Platform.storage.set(STORE_KEY, { v: 1, level: lvl, coins: game.coins, sound: Sound.on, gfxMode: gfxFlat ? 'flat' : 'gradient',
+  Platform.storage.set(STORE_KEY, { v: 1, level: lvl, coins: game.coins, sound: Sound.on,
     savedAt: Date.now() });
   if (typeof HSGame !== 'undefined' && HSGame) HSGame.save({ level: lvl, coins: game.coins });   // cloud save (whole small progress object)
 }

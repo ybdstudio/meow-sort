@@ -30,12 +30,13 @@ colors.forEach(c => { srcs[c] = 'data:image/webp;base64,' + fs.readFileSync(path
   await page.addScriptTag({ content: fs.readFileSync(path.join(ROOT, 'js/config.js'), 'utf8') +
     fs.readFileSync(path.join(ROOT, 'js/core.js'), 'utf8') + fs.readFileSync(path.join(ROOT, 'tools/bake/paint_moods.js'), 'utf8') });
   const result = await page.evaluate(async ({ meta, srcs, MOODS }) => {
-    const PAD = 2, colors = Object.keys(meta), imgs = {};
+    // 12 costumes x 8 moods: atlas stored at 62% (cats are drawn ~140 px wide on a 3x phone), keeps it ~1.2k x 2.3k
+    const PAD = 2, AS = 0.62, colors = Object.keys(meta), imgs = {};
     await Promise.all(colors.map(c => new Promise((res, rej) => { const i = new Image(); i.onload = () => { imgs[c] = i; res(); }; i.onerror = rej; i.src = srcs[c]; })));
-    const cellW = Math.max(...colors.map(c => imgs[c].width)) + PAD * 2;
+    const cellW = Math.ceil(Math.max(...colors.map(c => imgs[c].width)) * AS) + PAD * 2;
     const W = cellW * MOODS.length;
     let H = 0; const rowY = {};
-    colors.forEach(c => { rowY[c] = H; H += imgs[c].height + PAD * 2; });
+    colors.forEach(c => { rowY[c] = H; H += Math.ceil(imgs[c].height * AS) + PAD * 2; });
     const atlas = document.createElement('canvas'); atlas.width = W; atlas.height = H;
     const ag = atlas.getContext('2d'), frames = {};
     colors.forEach(c => {
@@ -45,8 +46,9 @@ colors.forEach(c => { srcs[c] = 'data:image/webp;base64,' + fs.readFileSync(path
         const g = cv.getContext('2d'); g.drawImage(img, 0, 0);
         try { paintMood(g, meta[c], mood); } catch (e) {}
         const x = mi * cellW + PAD, y = rowY[c] + PAD;
-        ag.drawImage(cv, x, y);
-        frames[c][mood] = [x, y, img.width, img.height];
+        const fw = Math.round(img.width * AS), fh = Math.round(img.height * AS);
+        ag.imageSmoothingQuality = 'high'; ag.drawImage(cv, x, y, fw, fh);
+        frames[c][mood] = [x, y, fw, fh, img.width, img.height];   // atlas rect + original (logical) size
       });
     });
     // Selection glow: a blurred yellow silhouette per costume, baked at half resolution.

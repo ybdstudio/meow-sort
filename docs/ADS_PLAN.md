@@ -1,4 +1,11 @@
-# Meow Sort: kịch bản ads (mục tiêu 8 IPU trong 5 phút đầu)
+# Meow Sort: kịch bản ads
+
+> **v0.4 (hiện tại): profile `paced`.** Test trên máy thật cho thấy TikTok từ chối interstitial gọi cách nhau dưới khoảng 30 giây (`interstitialAdShow:fail frequency controlled`). Bản cũ vẫn hiện "Ad break" và làm tối màn hình dù không có ad nào, nên người chơi bị ngắt quãng vô ích. Bản v0.4:
+> - Mọi interstitial cách nhau ≥ 40 giây, tính từ lúc ad trước kết thúc (TikTok yêu cầu ≥ 30 giây). Ad đầu tiên sớm nhất ở giây 30. Sau một rewarded phải chờ 25 giây. `I_break` chỉ chạy từ level 3 và khi đã 60 giây không có ad nào. Bỏ `I_panel`.
+> - Không còn thông báo "Ad break" và không làm tối màn hình trước khi ad thật sự chạy. Nếu bị TikTok từ chối, game chạy tiếp ngay và lần thử sau chờ đủ thời gian giãn cách.
+> - Mô phỏng với giới hạn 30 giây của TikTok: khoảng **4,5 IPU trong 5 phút** (≈1 interstitial + 3,5 rewarded). Profile `ipu8` cũ (dày đặc) còn khoảng 6,7 IPU với giới hạn này, nhưng ngắt quãng nhiều. Đổi profile bằng `ADS.profile`.
+
+## Bản cũ v0.3: profile ipu8 (mục tiêu 8 IPU)
 
 IPU (impressions per user) ở đây là số quảng cáo một người chơi xem trong 5 phút đầu, tính cả rewarded lẫn interstitial.
 Toàn bộ thông số nằm trong `ADS` ở `js/config.js`; logic thời gian nằm ở `js/ads_policy.js`. Game và bộ mô phỏng dùng chung đúng đoạn code này.

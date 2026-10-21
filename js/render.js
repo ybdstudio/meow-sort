@@ -357,6 +357,13 @@ function drawHUD(game) {
   drawStar(-46, -3, 25);
   ctx.restore();
   text('Level ' + (game.levelIndex + 1), 270, 150, 16, 'rgba(255,255,255,0.9)', 'rgba(20,50,130,0.55)', 4);
+  var tier = game.levelDef && game.levelDef.tier;
+  if (tier && tier !== 'Easy') {                          // difficulty tag from the level curve
+    var tc = tier === 'Medium' ? '#f08c1e' : tier === 'Hard' ? '#e5403b' : '#8b3fd9';
+    ctx.font = '900 13px ' + FONT; var tw = ctx.measureText(tier.toUpperCase()).width + 22;
+    ctx.fillStyle = tc; rr(ctx, 270 - tw / 2, 162, tw, 22, 11); ctx.fill();
+    text(tier.toUpperCase(), 270, 173, 13, '#ffffff');
+  }
 }
 
 function drawIconUndo() {
@@ -541,13 +548,12 @@ function drawSettings(game) {
   }
   ctx.fillStyle = 'rgba(122,68,16,0.12)'; rr(ctx, x + 50, y + 440, 300, 38, 16); ctx.fill();
   text('Rule: only the outermost cat moves', x + w / 2, y + 459, 15, '#7a4410');
-  uiButton('gfx', 'Graphics: ' + (gfxFlat ? 'Flat' : 'Gradient (beta)'), x + 50, y + 490, 300, 44, GREY, 17);
   if (Platform.debug) {
     uiButton('verify', 'Dev', x + 14, y + 18, 64, 34, GREY, 14);
     if (devResult) devResult.forEach(function (line, k) { text(line, x + w / 2, y + 610 + k * 15, 11, '#ffffff'); });
   }
   text('Version ' + VERSION + '  ·  build ' + BUILD, x + w / 2, y + 556, 15, '#5b2d0b');
-  text('render: ' + Platform.renderMode() + '  ·  ads: ' + Ads.provider + ' / ' + ADS.profile, x + w / 2, y + 578, 12, 'rgba(122,68,16,0.75)');
+  text('ads: ' + Ads.provider + ' / ' + ADS.profile, x + w / 2, y + 578, 12, 'rgba(122,68,16,0.75)');
 }
 
 function drawWin(game) {

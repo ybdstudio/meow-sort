@@ -22,7 +22,7 @@ function loadSprites(done) {
       SPRITES[color] = {};
       MOODS.forEach(function (mood) {
         var f = CAT_ATLAS.frames[color][mood];
-        SPRITES[color][mood] = { img: img, sx: f[0], sy: f[1], w: f[2], h: f[3] };
+        SPRITES[color][mood] = { img: img, sx: f[0], sy: f[1], sw: f[2], sh: f[3], w: f[4] || f[2], h: f[5] || f[3] };
       });
     });
     done(null);
@@ -35,4 +35,4 @@ function blitGlow(color, spr) {
   ctx.drawImage(g.img, g.sx, g.sy, g.w, g.h, -spr.w / 2 - pad, -spr.h + 4 - pad, spr.w + pad * 2, spr.h + pad * 2);
   return true;
 }
-function blitSprite(spr, dx, dy) { ctx.drawImage(spr.img, spr.sx, spr.sy, spr.w, spr.h, dx, dy, spr.w, spr.h); }
+function blitSprite(spr, dx, dy) { ctx.drawImage(spr.img, spr.sx, spr.sy, spr.sw || spr.w, spr.sh || spr.h, dx, dy, spr.w, spr.h); }

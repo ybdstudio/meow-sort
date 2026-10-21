@@ -18,7 +18,7 @@ var Ads = (function () {
   function on() { return ADS.enabled && Platform.query.ads !== 'none' && !!HSGame; }
 
   function begin(kind, label) {
-    showing = { kind: kind, label: label };
+    showing = { kind: kind, label: label, at: Platform.now() };
     try { Sound.suspend(); } catch (e) {}
     clearTimeout(safety);
     safety = setTimeout(function () { Platform.warn('ads: safety timeout', label); end(); }, ADS.safetyTimeout * 1000);
@@ -37,6 +37,8 @@ var Ads = (function () {
     get provider() { return on() ? 'hs' : 'none'; },
     get showing() { return !!showing || !!notice; },
     get notice() { return notice; },
+    // dim overlay only once the ad has been pending a moment (a refused ad never flashes the screen)
+    get overlay() { return !!showing && Platform.now() - showing.at > ADS.overlayDelay * 1000; },
     init: function () { Platform.log('ads: provider=' + this.provider + ' profile=' + ADS.profile); },
     impressions: function () { return policy.impressions(); },
 
@@ -76,18 +78,16 @@ var Ads = (function () {
       var why = !on() ? 'off' : (showing || notice) ? 'busy' : policy.canInter(trigger, { level: lvl, now: t() });
       if (!why && !HSGame.canShowAd(label)) why = 'hs:' + (HSGame.lastAdError || 'not ready');
       if (why) { stats.skipped++; if (Platform.debug) Platform.log('ads: ' + trigger + ' skipped (' + why + ')'); safeCall(then); return false; }
-      notice = { trigger: trigger };               // short "Ad break" notice so it never feels like a mis-tap
-      setTimeout(function () {
-        notice = null;
-        var t0 = t();
-        begin('inter', trigger);
-        HSGame.showAd(label).then(function (r) {
-          end();
-          if (r || err() === 'skipped') { policy.record('inter', trigger, t0, t()); stats.inter++; Platform.log('ads: ' + label + ' @' + trigger + ' shown (#' + policy.impressions() + ' @' + t0.toFixed(0) + 's)'); }
-          else { stats.noFill++; Platform.log('ads: ' + label + ' @' + trigger + ' no ad (' + err() + ')'); }
-          safeCall(then);
-        });
-      }, ADS.breakNotice * 1000);
+      // No "Ad break" notice up front: TikTok may still refuse (frequency cap), and a notice + dim screen
+      // with no ad is exactly the interruption players hated. The ad itself covers the screen when it plays.
+      var t0 = t();
+      begin('inter', trigger);
+      HSGame.showAd(label).then(function (r) {
+        end();
+        if (r || err() === 'skipped') { policy.record('inter', trigger, t0, t()); stats.inter++; Platform.log('ads: ' + label + ' @' + trigger + ' shown (#' + policy.impressions() + ' @' + t0.toFixed(0) + 's)'); }
+        else { policy.interRefused(t()); stats.noFill++; Platform.log('ads: ' + label + ' @' + trigger + ' no ad (' + err() + ') → next try in ' + Math.max(policy.p.interCooldown, ADS.platformInterGap) + 's'); }
+        safeCall(then);
+      });
       return true;
     }
   };

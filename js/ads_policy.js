@@ -16,7 +16,7 @@ AdsPolicy.prototype.canInter = function (trigger, ctx) {
   if (!p.triggers[trigger]) return 'trigger_off';
   if (now - this.start < p.interFirstDelay) return 'warmup';
   if (ctx.level < p.interMinLevel) return 'tutorial';
-  if (now - this.lastInter < p.interCooldown) return 'cooldown';
+  if (now - this.lastInter < Math.max(p.interCooldown, this.cfg.platformInterGap || 0)) return 'cooldown';
   if (now - this.lastReward < p.interAfterReward) return 'after_reward';
   if (this.inters >= p.maxInterPerSession) return 'cap';
   if (trigger === 'I_break') {
@@ -36,6 +36,8 @@ AdsPolicy.prototype.rewardCooldownLeft = function (label, now) {
   if (!r || !r.cooldown || last === undefined) return 0;
   return Math.max(0, r.cooldown - (now - last));
 };
+// A refused interstitial (TikTok frequency cap / no fill): restart the interstitial clock so we don't retry every match.
+AdsPolicy.prototype.interRefused = function (now) { this.lastInter = now; };
 // Call when an ad finished showing (impression), kind 'inter' | 'reward'
 AdsPolicy.prototype.record = function (kind, label, now, endNow) {
   var end = endNow === undefined ? now : endNow;

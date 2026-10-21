@@ -131,7 +131,6 @@ function onButton(id) {
   if (id === 'pop_cta') { var mp = MINI_POPS[uiPanel]; if (mp) Minis.act(mp.act); return; }
   if (id === 'restart') { uiPanel = 'settings'; Ads.tryInter('I_restart', function () { game.restartLevel(); }); return; }
   if (id === 'sound') { Sound.on = !Sound.on; saveProgress(); return; }
-  if (id === 'gfx') { gfxFlat = !gfxFlat; Platform.setFlatGraphics(gfxFlat); saveProgress(); return; }
   if (id.indexOf('level') === 0) { var li = parseInt(id.slice(5), 10); uiPanel = 'settings'; Ads.tryInter('I_select', function () { game.loadLevel(li); }); return; }
   if (id === 'verify') {
     var r = CORE.verifyAllLevels();

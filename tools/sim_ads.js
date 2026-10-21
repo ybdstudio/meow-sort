@@ -13,7 +13,7 @@ const sb = {}; vm.createContext(sb);
 vm.runInContext(fs.readFileSync(path.join(ROOT, 'js/config.js'), 'utf8') + fs.readFileSync(path.join(ROOT, 'js/ads_policy.js'), 'utf8') +
   '\nthis.ADS = ADS; this.AdsPolicy = AdsPolicy;', sb);
 const ADS = sb.ADS, AdsPolicy = sb.AdsPolicy;
-const TTMIN = +opt('ttmin', 0);   // platform-enforced min seconds between interstitials (TikTok error 11004; unknown → 0)
+const TTMIN = +opt('ttmin', 30);   // TikTok's interstitial cap (seen on device: refused under ~30 s)   // platform-enforced min seconds between interstitials (TikTok error 11004; unknown → 0)
 const PROFILE = opt('profile', ADS.profile), MINUTES = +opt('minutes', 5), RUNS = +opt('runs', 5000), HORIZON = MINUTES * 60;
 
 const PLAYER = {
@@ -40,7 +40,7 @@ function session(seed) {
     if (t >= HORIZON) return;
     if (pol.canInter(trigger, { level, now: t }) !== null) return;
     if (TTMIN && t - pol.lastInter < TTMIN) return;            // platform refused (11004): no impression, no harm
-    const d = rnd(r, ...PLAYER.interDur); shown.push({ t, k: 'inter', l: trigger }); t += ADS.breakNotice + d; pol.record('inter', trigger, t - d, t);
+    const d = rnd(r, ...PLAYER.interDur); shown.push({ t, k: 'inter', l: trigger }); t += d; pol.record('inter', trigger, t - d, t);
   }
   function reward(label, p) {
     if (t >= HORIZON || pol.canReward(label, t) !== null || r() > p) return false;

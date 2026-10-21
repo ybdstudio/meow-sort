@@ -118,8 +118,8 @@ var Platform = (function () {
     this._fillRaw = '#000000'; this._strokeRaw = '#000000'; this._stack = [];
   }
   var SC = SafeContext.prototype;
-  SafeContext.flat = false;
-  SafeContext.mode = 'safe';
+  SafeContext.flat = true;            // gradients are never drawn on TikTok's canvas: always their flat colour
+  SafeContext.mode = 'flat';
   function styleOf(v) {
     if (v && typeof v === 'object') return v instanceof SafeGradient ? v : { real: v, flat: function () { return parseColor('#808080'); }, pattern: true };
     return parseColor(v);
@@ -172,11 +172,9 @@ var Platform = (function () {
 
   function patchContext(ctx) {
     if (!ctx) return ctx;
-    if (launchQuery().gradfix === '0') { SafeContext.mode = 'raw'; log('render: raw native context (gradfix=0)'); return ctx; }
-    log('render: SafeContext (opaque colours + per-draw alpha)');
+    log('render: flat (gradients drawn as solid colours)');
     return new SafeContext(ctx);
   }
-  function setFlatGraphics(on) { SafeContext.flat = !!on; SafeContext.mode = SafeContext.mode === 'raw' ? 'raw' : (on ? 'flat' : 'safe'); }
 
   /* ---------- images ---------- */
   function loadImage(src, done) {
@@ -293,7 +291,7 @@ var Platform = (function () {
     global: G, hasSDK: NS.length > 0, fn: fn, call: call, canIUse: canIUse, log: log, warn: warn,
     info: info, refreshInfo: function () { this.info = info = sysInfo(); return info; },
     getMainCanvas: getMainCanvas, createOffscreen: createOffscreen, patchContext: patchContext,
-    setFlatGraphics: setFlatGraphics, renderMode: function () { return SafeContext.mode; },
+    renderMode: function () { return 'flat'; },
     loadImage: loadImage, storage: storage,
     createAudioContext: createAudioContext, ramp: ramp, setParam: setParam,
     raf: raf, now: now, onTouch: onTouch, onShow: onShow, onHide: onHide, vibrate: vibrate,

@@ -11,7 +11,6 @@ var winBonus = 0;              // coins that ad gave (from HS, never typed)
 var boostTaken = false;        // R5 taken for the current level
 var levelStartT = 0;           // Anim.time when the level was loaded (R5 chip shows for a few seconds)
 function bedCount() { return game.board.containers.filter(function (c) { return c.kind === 'bed'; }).length; }
-var gfxFlat = true;           // Settings → Graphics: Flat draws gradients as solid colours (saved)
 var rewardPopup = null;          // { title, coins, t }
 
 function openPanel(name) { if (game.pause()) { uiPanel = name; devResult = null; } else if (game.state === S.PAUSED) uiPanel = name; }
@@ -81,7 +80,7 @@ function drawAdOverlay() {
     ctx.fillStyle = 'rgb(255,255,255)'; rr(ctx, 150, 430, 240, 70, 35); ctx.fill();
     ctx.strokeStyle = '#7442d8'; ctx.lineWidth = 4; ctx.stroke();
     text('Ad break', 270, 466, 26, '#5b2db0');
-  } else if (Ads.showing) {
+  } else if (Ads.overlay) {
     ctx.fillStyle = 'rgba(10,15,40,0.8)'; ctx.fillRect(-300, -300, LW + 600, LH + 600);
     text('Ad playing…', 270, 470, 22, '#ffffff');
   }

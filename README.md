@@ -64,3 +64,13 @@ cd dist/meow-sort && ttmg dev      # DevTool → Upload → scan QR with a test 
 - Check: `node tools/hs/hs-check.mjs dist/meow-sort` · tests: `node tools/test_emulator.js && node tools/test_ads.js`.
 - UI art: `assets_src/ui/` → `python3 -I tools/prepare_ui.py` → `native/project/ui/loading.jpg`, `native/project/res/ui.png`, `js/ui_atlas.js`.
 - Economy: level 50 · Double Coin +50 · Gift Pod +100 (45 s cooldown) · Share +100/day · Add to screen +250 once · Revisit +200 once.
+
+## v0.4
+- Gradients removed for good (always flat; the Graphics setting is gone).
+- Ads: profile `paced` (TikTok refuses interstitials < ~30 s apart): >= 40 s gaps, no "Ad break" notice, no dimming until
+  an ad actually plays, back-off after a refusal. Sim: ~4.5 IPU / 5 min.
+- Sound: every SFX x2.4 into a master bus with a limiter.
+- 30-level curve (docs/difficulty_curve_v1.png) + 60 more repeating levels 11-30, all solver-verified, levels loop after 90:
+  `node tools/gen_levels.js --total 90` → js/levels_gen.js, report in docs/levels_report.json.
+- 7 new costumes cut from assets_src/costumes_sheet.png (`python3 -I tools/cut_costumes.py`, GrabCut + auto eye detection),
+  unlocked at levels 4/8/11/14/17/20/23. Superhero look-alikes and the police cat are not used.

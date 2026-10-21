@@ -137,28 +137,16 @@ const ok = (c, m) => { console.log((c ? '  PASS ' : '  FAIL ') + m); if (!c) fai
     const c = document.querySelector('#phone canvas'), g = c.getContext('2d'), v = MeowSort.view();
     return q.map(([x, y]) => { const d = g.getImageData(Math.round((v.offX + x * v.scale) * v.dpr), Math.round((v.offY + y * v.scale) * v.dpr), 1, 1).data; return [d[0], d[1], d[2]]; });
   }, q);
-  // shelf plank, bed, booster button, HUD coin pill, settings gear (all gradient fills drawn after rgba shadows)
+  // Gradients are gone: every gradient is drawn flat, so the TikTok gradient-alpha quirk cannot show.
   const probes = [[150, 273], [204, 792], [120, 915], [70, 50], [486, 905]];
   const delta = (a, b) => Math.max(...a.map((p, i) => Math.max(...p.map((c, k) => Math.abs(c - b[i][k])))));
-  await page.goto(base + '?ads=none&device=iphone14'); await ready();
-  const clean = await px(probes);
-  await page.goto(base + '?ads=none&device=iphone14&gradquirk=1&gradfix=0'); await ready();
-  const broken = await px(probes);
-  ok(delta(clean, broken) > 40, 'gradquirk without fix reproduces the device bug (max Δ ' + delta(clean, broken) + ')');
-  for (const mode of ['gradquirk=1', 'gradquirk=1&ttquirks=1']) {
-    await page.goto(base + '?ads=none&device=iphone14&' + mode); await ready();
-    const got = await px(probes);
-    ok(delta(clean, got) <= 6, 'gradient quirk fixed [' + mode + '] (max Δ ' + delta(clean, got) + ' vs clean render)');
-  }
-  // Flat is the default on native; Settings → Graphics switches to Gradient (beta) and persists
   await page.goto(base + '?ads=none&device=iphone14'); await page.evaluate(() => localStorage.clear()); await page.reload(); await ready();
-  ok(await page.evaluate(() => MeowSort.platform.renderMode() === 'flat'), 'render mode defaults to flat');
-  await tapLogical(486, 898); await page.waitForTimeout(300);
-  await tapLogical(270, 200 + 490 + 22); await page.waitForTimeout(200);
-  const g1 = await page.evaluate(() => ({ mode: MeowSort.platform.renderMode(), saved: JSON.parse(localStorage.getItem('meowsort_native_v1')).gfxMode }));
-  ok(g1.mode === 'safe' && g1.saved === 'gradient', 'Graphics toggle → Gradient (beta), saved');
-  await page.reload(); await ready();
-  ok(await page.evaluate(() => MeowSort.platform.renderMode() === 'safe'), 'gradient choice survives reload');
+  const clean = await px(probes);
+  ok(await page.evaluate(() => MeowSort.platform.renderMode() === 'flat'), 'render mode is always flat');
+  await page.goto(base + '?ads=none&device=iphone14&gradquirk=1'); await ready();
+  ok(delta(clean, await px(probes)) <= 6, 'TikTok gradient quirk has no effect (flat only)');
+  await page.goto(base + '?ads=none&device=iphone14&gfx=gradient'); await ready();
+  ok(await page.evaluate(() => MeowSort.platform.renderMode() === 'flat'), 'no way back to gradients (?gfx=gradient ignored)');
   await page.evaluate(() => localStorage.clear()); await page.reload(); await ready();
 
   // Selection glow is the baked halo (no gradient): a point beside the lifted cat turns yellow

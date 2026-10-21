@@ -20,8 +20,11 @@ var CORE = (function () {
       if (src) for (var k in src) if (Object.prototype.hasOwnProperty.call(src, k)) CONFIG[k] = src[k];
     });
   }
-  var COLOR_CODES = { R: 'red', B: 'blue', G: 'green', Y: 'yellow', P: 'pink' };
-  var COLOR_LETTER = { red: 'R', blue: 'B', green: 'G', yellow: 'Y', pink: 'P' };
+  // Costumes: the original 5 + 7 cut from the costume sheet (tools/cut_costumes.py).
+  var COLOR_CODES = { R: 'red', B: 'blue', G: 'green', Y: 'yellow', P: 'pink',
+    C: 'chef', D: 'reindeer', O: 'pirate', A: 'astronaut', W: 'wizard', Q: 'princess', F: 'firefighter' };
+  var COLOR_LETTER = {};
+  for (var cl in COLOR_CODES) COLOR_LETTER[COLOR_CODES[cl]] = cl;
 
   // Strings list cats from the WALL outward (left column: left->right,
   // right column: right->left as seen on screen).
@@ -30,11 +33,8 @@ var CORE = (function () {
       left: ['RRBB', 'YYR', 'BY'], right: ['RRY', 'BBY', ''] },
     { name: 'Standard', beds: 2,
       left: ['BPP', 'RGG', 'BRY', 'PBB', 'BPP'],
-      right: ['YGG', 'G', '', 'RRR', 'YYY'] },
-    { name: 'Advanced', beds: 2,
-      left: ['YYYG', 'YRPB', 'GYBP', 'PBBR', 'RYRY'],
-      right: ['BRRB', 'GGBB', 'BRGY', 'YRPY', 'PRBR'] }
-  ];
+      right: ['YGG', 'G', '', 'RRR', 'YYY'] }
+  ];   // levels 3+ come from js/levels_gen.js (30-level difficulty curve, tools/gen_levels.js)
 
   function buildBoard(def) {
     var nextId = 1, containers = [];
@@ -270,7 +270,14 @@ var CORE = (function () {
     return function () { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; };
   }
   function generateLevel(n, rule) {
-    if (typeof PREGEN_LEVELS !== 'undefined' && PREGEN_LEVELS[n]) return PREGEN_LEVELS[n];
+    if (typeof PREGEN_LEVELS !== 'undefined') {
+      if (PREGEN_LEVELS[n]) return PREGEN_LEVELS[n];
+      // past the pre-generated range: loop the 31-90 block (it repeats the 11-30 rhythm), renamed
+      if (n >= 90 && PREGEN_LEVELS[30 + ((n - 30) % 60)]) {
+        var src = PREGEN_LEVELS[30 + ((n - 30) % 60)], cp = JSON.parse(JSON.stringify(src));
+        cp.name = 'Level ' + (n + 1); return cp;
+      }
+    }
     var r = rng(9137 + n * 7919);
     var groups = Math.min(8, 5 + Math.floor((n - 3) / 2));
     for (var attempt = 0; attempt < 40; attempt++) {

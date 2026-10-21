@@ -26,7 +26,7 @@ let failures = 0; const ok = (c, m) => { console.log((c ? '  PASS ' : '  FAIL ')
 
   // 1. IPU simulation gate
   const sim = JSON.parse(cp.execFileSync(process.execPath, [path.join(__dirname, 'sim_ads.js'), '--json', '--runs', '3000']).toString());
-  ok(sim.ipu_median >= 8 && sim.ipu_mean >= 7.5, `sim ${sim.profile}: IPU in 5 min median ${sim.ipu_median}, mean ${sim.ipu_mean} (target 8)`);
+  ok(sim.profile === 'paced' && sim.inter_per_user <= 2 && sim.ipu_mean >= 3.5, `sim ${sim.profile} (TikTok 30 s cap): IPU ${sim.ipu_mean} in 5 min, ${sim.inter_per_user} interstitials`);
 
   await new Promise(r => server.listen(0, r));
   const base = 'http://127.0.0.1:' + server.address().port + '/emulator/index.html?device=iphone14';
@@ -133,14 +133,27 @@ let failures = 0; const ok = (c, m) => { console.log((c ? '  PASS ' : '  FAIL ')
   const ib = (await st()).stats.inter;
   await page.evaluate(() => { const p = MeowSort.ads().policy; p.lastInter -= 120; p.lastReward -= 120; });
   const coinsBeforeInter = (await st()).coins;
-  await tapL(270, 619); await page.waitForTimeout(300);
-  ok(await page.evaluate(() => !!MeowSort.ads().notice), '"Ad break" notice before Inter1');
-  await shot('h3_break');
-  await page.waitForTimeout(1300); await idle(); await page.waitForTimeout(400);
+  await tapL(270, 619); await page.waitForTimeout(150);
+  ok(await page.evaluate(() => !MeowSort.ads().notice && !MeowSort.ads().overlay), 'no "Ad break" notice / dim screen before the ad answers');
+  await idle(); await page.waitForTimeout(400);
   s = await st();
   ok(s.stats.inter === ib + 1 && s.lvl === 2, 'showAd("Inter1") at Next → interstitial, then level 3');
   ok(s.coins === coinsBeforeInter, 'Inter1 gives nothing (no reward key)');
   ok(logs.some(l => l.includes('create InterstitialAd ' + unit('Inter1'))), 'HS played the dashboard interstitial unit (' + unit('Inter1') + ')');
+
+  // 3b. TikTok refuses (frequency cap): no interstitial, no dimmed screen, and no retry for >= 30 s
+  await page.evaluate(() => { const p = MeowSort.ads().policy; p.lastInter -= 120; p.lastReward -= 120; p.lastAny -= 120; });
+  await page.evaluate(() => { window.__fillBefore = document.location.search; });
+  const refused = await page.evaluate(async () => {
+    const A = MeowSort.ads(), H = MeowSort.hs().kit, real = H.showAd;
+    H.showAd = function () { H.lastAdError = 'interstitialAdShow:fail frequency controlled'; return Promise.resolve(null); };
+    let after = null; A.tryInter('I_restart', () => { after = true; });
+    await new Promise(r => setTimeout(r, 200));
+    const again = A.policy.canInter('I_break', { level: 5, now: A.sessionTime() });
+    H.showAd = real;
+    return { after, overlay: A.overlay, again };
+  });
+  ok(refused.after && !refused.overlay && refused.again === 'cooldown', 'refused interstitial → game continues at once, next try waits (' + refused.again + ')');
 
   // 4. Booster placements: reward via onGive, follow-up in the game
   await page.evaluate(() => { MeowSort.game.boosters.bed = 0; MeowSort.game.boosters.shuffle = 0; });
