@@ -7,6 +7,7 @@
     "levels": "node tools/gen_levels.js 60",
     "atlas": "node tools/bake_atlas.js",
     "build": "node tools/build_native.js",
+    "check": "node tools/check_package.js dist/meow-sort-upload.zip",
     "build:debug": "node tools/build_native.js --debug --no-minify",
     "serve": "cd dist && python3 -m http.server 8000",
     "test": "node tools/test_emulator.js"

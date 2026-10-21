@@ -11,7 +11,8 @@ native/src/    adapter.js (Platform shim over TTMinis.game / tt), ui_native.js (
                touch press handling), minis_native.js (shortcut / revisit / share / login), main_native.js (boot)
 native/project game.json, project.config.json (set appid), res/ subpackage (cats.png atlas)
 native/emulator/index.html   browser shim of the TikTok runtime
-tools/         build_native.js, bake_atlas.js, gen_levels.js, test_emulator.js
+tools/         build_native.js, check_package.js, zip.js, bake_atlas.js, gen_levels.js, test_emulator.js
+skills/        updated html-to-native-tiktok SKILL.md
 assets_src/    original cat sprites (WebP) + face metadata
 dist/          build output: meow-sort/ (upload), emulator/
 ```
@@ -27,9 +28,18 @@ node tools/gen_levels.js 60                      # only if rules change
 Emulator query: `?device=iphone14|iphonese|pixel7|android|tablet` `?ttquirks=1` (no AudioParam ramps)
 `?shadow=1` (use shadowBlur glow) `?oldclient=1` (no mission APIs) `?dev=1` `?level=N`.
 
+## Upload (important)
+Upload ONLY `dist/meow-sort/` (run `ttmg dev` inside it) or `dist/meow-sort-upload.zip`. Both have
+`game.json` at the root. Uploading the source zip / repo root fails with
+`Cannot find game.json in the project source`. Check any folder or zip first:
+```bash
+node tools/check_package.js dist/meow-sort-upload.zip
+```
+
 ## Device test
 ```bash
 npm install @ttmg/cli -g && ttmg login
+node tools/build_native.js --appid YOUR_APP_ID
 cd dist/meow-sort && ttmg dev      # DevTool → Upload → scan QR with a test account
 ```
 

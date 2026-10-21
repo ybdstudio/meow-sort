@@ -8,7 +8,12 @@
        game.js                  (all modules concatenated into one closure)
        game.json, project.config.json
        res/                     ('res' subpackage: cats.png)
+     dist/meow-sort-upload.zip  -> same files with game.json at the ZIP ROOT
      dist/emulator/index.html   -> local browser test (loads ../meow-sort/game.js)
+
+   Upload ONLY dist/meow-sort (or the upload zip). The repo root / source zip has
+   no game.json at its root and the packer rejects it.
+   --strict exits non-zero when the pre-upload check fails (e.g. no appid).
 
    Module order matters: everything shares one function scope, exactly like the
    single <script> of the H5 prototype. */
@@ -117,4 +122,14 @@ const kb = n => (n / 1024).toFixed(1) + ' KB';
   console.log('  appid          ' + pc.appid);
   console.log('Emulator → ' + path.relative(ROOT, path.join(EMU, 'index.html')) + '   (serve ' + path.relative(ROOT, OUT) + '/ over http)');
   if (main >= LIMIT_MAIN || total >= LIMIT_TOTAL) process.exit(2);
+
+  // Upload zip: contents of meow-sort/ at the ZIP ROOT (game.json must be at the root,
+  // otherwise the packer fails with "Cannot find game.json in the project source").
+  const ZIP = path.join(OUT, 'meow-sort-upload.zip');
+  const entries = require('./zip').zipDir(PKG, ZIP);
+  console.log('Upload zip → ' + path.relative(ROOT, ZIP) + '  (' + entries.length + ' files, root: ' + entries.filter(e => !e.includes('/')).join(', ') + ')');
+  console.log('\nPre-upload check:');
+  const r = require('child_process').spawnSync(process.execPath, [path.join(__dirname, 'check_package.js'), PKG], { stdio: 'inherit' });
+  console.log('\nNext: cd ' + path.relative(process.cwd(), PKG) + ' && ttmg dev   → DevTool → Upload');
+  if (r.status !== 0 && opt('strict', false)) process.exit(3);
 })();
