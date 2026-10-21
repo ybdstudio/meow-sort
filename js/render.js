@@ -539,12 +539,15 @@ function drawSettings(game) {
   for (var i = 0; i < CORE.LEVELS.length; i++) {
     uiButton('level' + i, String(i + 1), x + 70 + i * 92, y + 372, 76, 52, game.levelIndex === i ? ORANGE : PURPLE, 22);
   }
-  ctx.fillStyle = 'rgba(122,68,16,0.12)'; rr(ctx, x + 50, y + 446, 300, 44, 18); ctx.fill();
-  text('Rule: only the outermost cat moves', x + w / 2, y + 468, 15, '#7a4410');
+  ctx.fillStyle = 'rgba(122,68,16,0.12)'; rr(ctx, x + 50, y + 440, 300, 38, 16); ctx.fill();
+  text('Rule: only the outermost cat moves', x + w / 2, y + 459, 15, '#7a4410');
+  uiButton('gfx', 'Graphics: ' + (gfxFlat ? 'Flat' : 'Gradient'), x + 50, y + 490, 300, 44, GREY, 17);
   if (Platform.debug) {
-    uiButton('verify', 'Dev: verify levels', x + 50, y + 500, 300, 40, GREY, 15);
-    if (devResult) devResult.forEach(function (line, k) { text(line, x + w / 2, y + 556 + k * 15, 11, '#5b2d0b'); });
-  } else text('v' + VERSION, x + w / 2, y + 560, 13, 'rgba(122,68,16,0.6)');
+    uiButton('verify', 'Dev', x + 14, y + 18, 64, 34, GREY, 14);
+    if (devResult) devResult.forEach(function (line, k) { text(line, x + w / 2, y + 610 + k * 15, 11, '#ffffff'); });
+  }
+  text('Version ' + VERSION + '  ·  build ' + BUILD, x + w / 2, y + 556, 15, '#5b2d0b');
+  text('render: ' + Platform.renderMode(), x + w / 2, y + 578, 12, 'rgba(122,68,16,0.75)');
 }
 
 function drawWin(game) {

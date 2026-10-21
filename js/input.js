@@ -87,6 +87,7 @@ function onButton(id) {
   if (id === 'close' || id === 'resume') { game.resume(); uiPanel = 'settings'; return; }
   if (id === 'restart') { game.restartLevel(); return; }
   if (id === 'sound') { Sound.on = !Sound.on; saveProgress(); return; }
+  if (id === 'gfx') { gfxFlat = !gfxFlat; Platform.setFlatGraphics(gfxFlat); saveProgress(); return; }
   if (id.indexOf('level') === 0) { game.loadLevel(parseInt(id.slice(5), 10)); return; }
   if (id === 'verify') {
     var r = CORE.verifyAllLevels();

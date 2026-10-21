@@ -1,7 +1,8 @@
 /* ===================== CONFIG =====================
    Build-level settings for Meow Sort. Everything here can be tuned without
    touching game logic. Rules/economy are merged into CORE.CONFIG at start-up. */
-var VERSION = '0.1.1';
+var VERSION = '0.1.2';
+var BUILD = 'dev';          // replaced by tools/build_native.js with the build time
 var GAME_NAME = 'Meow Sort';
 var STORE_KEY = 'meowsort_native_v1';
 

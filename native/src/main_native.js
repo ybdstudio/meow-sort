@@ -17,6 +17,7 @@ function startGame() {
   if (saved) {
     if (typeof saved.coins === 'number') game.coins = saved.coins;
     if (typeof saved.sound === 'boolean') Sound.on = saved.sound;
+    if (saved.gfxFlat === true) { gfxFlat = true; Platform.setFlatGraphics(true); }
     Minis.load(saved.minis);
   }
   Anim.displayCoins = game.coins;
@@ -24,6 +25,7 @@ function startGame() {
   if (Platform.query.level) startLevel = Math.max(0, (parseInt(Platform.query.level, 10) || 1) - 1);
   game.loadLevel(startLevel);
   booted = true;
+  Platform.log('Meow Sort v' + VERSION + ' build ' + BUILD + ' render=' + Platform.renderMode());
   last = Platform.now();
   Platform.raf(frame);
   MinisNative.login();

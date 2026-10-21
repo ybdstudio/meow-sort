@@ -141,11 +141,22 @@ const ok = (c, m) => { console.log((c ? '  PASS ' : '  FAIL ') + m); if (!c) fai
   await page.goto(base + '?device=iphone14&gradquirk=1&gradfix=0'); await ready();
   const broken = await px(probes);
   ok(delta(clean, broken) > 40, 'gradquirk without fix reproduces the device bug (max Δ ' + delta(clean, broken) + ')');
-  for (const mode of ['gradquirk=1', 'gradquirk=1&gradfixmode=create']) {
+  for (const mode of ['gradquirk=1', 'gradquirk=1&ttquirks=1']) {
     await page.goto(base + '?device=iphone14&' + mode); await ready();
     const got = await px(probes);
     ok(delta(clean, got) <= 6, 'gradient quirk fixed [' + mode + '] (max Δ ' + delta(clean, got) + ' vs clean render)');
   }
+  // Graphics: Flat toggle (Settings) is opaque too and persists
+  await page.goto(base + '?device=iphone14&gradquirk=1'); await ready();
+  await tapLogical(486, 898); await page.waitForTimeout(300);
+  await tapLogical(270, 200 + 490 + 22); await page.waitForTimeout(200);
+  const flat = await page.evaluate(() => ({ mode: MeowSort.platform.renderMode(), saved: JSON.parse(localStorage.getItem('meowsort_native_v1')).gfxFlat }));
+  ok(flat.mode === 'flat' && flat.saved === true, 'Settings → Graphics: Flat switches render mode and is saved');
+  await tapLogical(270, 200 + 60 + 28); await page.waitForTimeout(300);
+  const fl = await px(probes);
+  ok(fl.every(p => p[0] + p[1] + p[2] > 120), 'flat mode renders opaque shapes ' + JSON.stringify(fl));
+  await shot('09_flat');
+  await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('meowsort_native_v1')); s.gfxFlat = false; localStorage.setItem('meowsort_native_v1', JSON.stringify(s)); });
   await shot('08_gradquirk_fixed');
   await shot('07_iphonese');
 

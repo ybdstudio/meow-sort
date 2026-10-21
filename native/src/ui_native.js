@@ -6,6 +6,7 @@
    - press handling: buttons fire on release inside the same button
      (buttonStart / buttonMove / buttonEnd); board taps fire on touch start. */
 var uiPanel = 'settings';
+var gfxFlat = false;           // Settings → Graphics: Flat draws gradients as solid colours (saved)
 var rewardPopup = null;          // { title, coins, t }
 
 function openPanel(name) { if (game.pause()) { uiPanel = name; devResult = null; } else if (game.state === S.PAUSED) uiPanel = name; }
@@ -87,6 +88,7 @@ function drawLoading(progress, label) {
   ctx.fillStyle = 'rgba(10,30,90,0.45)'; rr(ctx, 120, 560, 300, 22, 11); ctx.fill();
   ctx.fillStyle = lin(560, 582, ['#ffe96e', '#f2a20f']); rr(ctx, 122, 562, Math.max(18, 296 * clamp(progress, 0, 1)), 18, 9); ctx.fill();
   text(label || 'Loading…', 270, 610, 17, 'rgba(255,255,255,0.9)');
+  text('v' + VERSION + ' · ' + BUILD, 270, 920, 13, 'rgba(255,255,255,0.6)');
 }
 function drawFatal(msg) {
   try {

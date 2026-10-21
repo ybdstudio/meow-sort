@@ -80,6 +80,8 @@ const kb = n => (n / 1024).toFixed(1) + ' KB';
     '(function () {\n\'use strict\';\n' +
     MODULES.map(m => '/* ---- ' + m + ' ---- */\n' + fs.readFileSync(path.join(ROOT, m), 'utf8')).join('\n') +
     '\n})();\n';
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 13).replace('T', '-');   // e.g. 20261021-0530 (UTC)
+  code = code.replace("var BUILD = 'dev';", "var BUILD = '" + stamp + "';");
   if (DEBUG) code = code.replace("debug: query.dev === '1' || query.debug === '1'", 'debug: true');
 
   // Syntax check before anything else
@@ -114,7 +116,7 @@ const kb = n => (n / 1024).toFixed(1) + ' KB';
   const total = dirSize(PKG);
   const sub = (gj.subpackages || []).reduce((n, s) => n + dirSize(path.join(PKG, s.root)), 0);
   const main = total - sub;
-  console.log('Meow Sort v' + version + (DEBUG ? ' [debug]' : '') + ' → ' + path.relative(ROOT, PKG));
+  console.log('Meow Sort v' + version + ' build ' + stamp + (DEBUG ? ' [debug]' : '') + ' → ' + path.relative(ROOT, PKG));
   console.log('  game.js        ' + kb(fs.statSync(path.join(PKG, 'game.js')).size) + (MINIFY ? '' : ' (unminified)'));
   console.log('  main package   ' + kb(main) + ' / 4096 KB ' + (main < LIMIT_MAIN ? 'OK' : 'TOO BIG'));
   console.log('  subpackages    ' + kb(sub));

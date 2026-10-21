@@ -157,9 +157,10 @@
     return ac;
   }
 
-  /* ---- Krypton canvas quirk (seen on TikTok device): a gradient fillStyle inherits
-     the alpha of the last solid colour set on fillStyle, so a gradient set after
-     'rgba(...,0.3)' paints at 30%. Simulated with ?ttquirks=1 or ?gradquirk=1. ---- */
+  /* ---- Krypton canvas quirk (seen on TikTok device): a gradient fill paints with the
+     alpha of the last SOLID colour that was actually DRAWN (state syncs lazily, on draw),
+     so 'rgba(...,0.3)' shadow → gradient fill paints the gradient at 30%. Merely assigning
+     an opaque colour without drawing does NOT reset it. ?ttquirks=1 or ?gradquirk=1. ---- */
   if (Q.ttquirks === '1' || Q.gradquirk === '1') {
     var C2D = CanvasRenderingContext2D.prototype, fsd = Object.getOwnPropertyDescriptor(C2D, 'fillStyle');
     function alphaOf(s) {
@@ -171,18 +172,19 @@
     Object.defineProperty(C2D, 'fillStyle', { configurable: true, enumerable: true,
       get: function () { return fsd.get.call(this); },
       set: function (v) {
-        if (typeof v === 'string') { this.__solidA = alphaOf(v); this.__grad = false; } else this.__grad = true;
+        if (typeof v === 'string') { this.__pendA = alphaOf(v); this.__grad = false; } else this.__grad = true;
         fsd.set.call(this, v);
       } });
     ['fill', 'fillRect', 'fillText'].forEach(function (fnName) {
       var orig = C2D[fnName];
       C2D[fnName] = function () {
-        if (!this.__grad || this.__solidA === undefined || this.__solidA >= 1) return orig.apply(this, arguments);
-        var a = this.globalAlpha; this.globalAlpha = a * this.__solidA;
+        if (!this.__grad) { this.__drawnA = this.__pendA === undefined ? 1 : this.__pendA; return orig.apply(this, arguments); }
+        if (this.__drawnA === undefined || this.__drawnA >= 1) return orig.apply(this, arguments);
+        var a = this.globalAlpha; this.globalAlpha = a * this.__drawnA;
         try { return orig.apply(this, arguments); } finally { this.globalAlpha = a; }
       };
     });
-    console.warn('[emu] gradquirk: gradients inherit the previous solid fill alpha');
+    console.warn('[emu] gradquirk: gradient fills inherit the alpha of the last DRAWN solid fill');
   }
 
   var showCbs = [], hideCbs = [];
