@@ -132,6 +132,9 @@ res/...              ← subpackage assets
         **including the failed fix** (the failed build must fail the test), then fix, then re-run
   - [ ] pixel-compare test: read the same points (shelf, bed, button, HUD pill) from a clean render, a quirk render
         with the fix off (must differ, which proves the simulation works) and a quirk render with the fix on (must match)
+  - [ ] these simulations are models: they caught the faded UI but not why gradients still failed on device, so the
+        device result decides. Also test the default FLAT render and that soft effects (e.g. selection glow) come
+        from the baked images (pixel check next to a selected sprite)
   - [ ] automate it: `tools/test_emulator.js` (Playwright) taps the canvas via real pointer events
 - [ ] **Device**
   ```bash
