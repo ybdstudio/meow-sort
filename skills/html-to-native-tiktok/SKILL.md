@@ -38,7 +38,7 @@ res/...              ← subpackage assets
 - Missions need TikTok ≥ 41.0: `addShortcut`, `getShortcutMissionReward` → `{canReceiveReward}`,
   `startEntranceMission`, `getEntranceMissionReward` → `{canReceiveReward}`, (0.32+) `reportMissionRewardGranted`.
   Share: `shareAppMessage({title, query})`. Silent login: `login()`.
-- **Canvas quirk (TikTok Krypton canvas, confirmed on device):** a gradient/pattern assigned to `fillStyle`
+- **Canvas quirk (TikTok Krypton canvas, seen on device: no error, just faded UI):** a gradient/pattern assigned to `fillStyle`
   inherits the **alpha of the last solid colour** set before it. The common pattern
   `fillStyle='rgba(0,0,0,0.3)'` (shadow) → `fillStyle=gradient` paints the gradient at 30%, so shelves, buttons,
   panels and pills look see-through. Strokes, text, solid fills and `drawImage` are unaffected, and nothing is logged.
