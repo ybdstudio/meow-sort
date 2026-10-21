@@ -130,6 +130,20 @@ let failures = 0; const ok = (c, m) => { console.log((c ? '  PASS ' : '  FAIL ')
   await tapL(354, 62); await page.waitForTimeout(200); await idle(); await page.waitForTimeout(300);
   ok((await st()).coins === c3 + 100, 'HS onGive → R4 reward granted');
 
+  // 9b. HS grant arriving AFTER the close (queued/late onGive) is still delivered once
+  await open('hsfake=1&adauto=1&addur=1&hsgivedelay=2500');
+  const c4 = (await st()).coins;
+  await tapL(354, 62); await page.waitForTimeout(200); await idle();
+  ok((await st()).coins === c4, 'late onGive: nothing granted at close');
+  await page.waitForTimeout(1500);
+  s = await st();
+  ok(s.coins === c4 + 100 && s.stats.late === 1, 'late onGive (2.5 s after close) → reward applied once');
+
+  // 9c. HS offline at boot → falls back to TikTok ads, game unaffected
+  await open('hsfake=1&hsoffline=1&fakeads=1');
+  s = await st();
+  ok(s.prov === 'tt' && s.state === 'READY', 'HS offline → provider falls back to tt, game runs');
+
   // 10. No provider → ad buttons hidden, nothing breaks
   await open('ads=none');
   ok(await page.evaluate(() => MeowSort.ads().provider === 'none' && !MeowSort.ads().rewardReady('R4')), 'ads=none: rewarded buttons hidden');

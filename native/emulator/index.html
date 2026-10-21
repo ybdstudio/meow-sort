@@ -238,7 +238,7 @@
     if (Q.hsfake === '1' && key === 'hs/hs-game.js') {
       var give = [];
       modCache[key] = { exports: {
-        init: function (c) { console.log('[emu] fake HS init', c.gameId, c.testMode ? 'test' : 'live'); },
+        init: function (c) { if (Q.hsoffline === '1') { console.log('[emu] fake HS offline'); throw new Error('HS backend unreachable'); } console.log('[emu] fake HS init', c.gameId, c.testMode ? 'test' : 'live'); },
         canShowAd: function (place) { return Q.adfill !== '0'; },
         onGive: function (f) { give.push(f); },
         showAd: function (place, cb) {
@@ -246,7 +246,8 @@
           return new Promise(function (res, rej) {
             if (Q.adfill === '0') { rej({ errMsg: 'no fill' }); return; }
             adShow(kind, function (ended) {
-              if (kind === 'rv' && ended) give.forEach(function (f) { f({ place: place, item: { category: 'ad_effect' } }); });
+              var g = function () { give.forEach(function (f) { f({ place: place, item: { category: 'ad_effect' } }); }); };
+              if (kind === 'rv' && ended) { if (Q.hsgivedelay) setTimeout(g, +Q.hsgivedelay); else g(); }
               res({ isEnded: ended });
             });
           });

@@ -24,7 +24,7 @@ var HSAds = (function () {
   function create() {
     if (!load()) return null;
     try {
-      if (typeof H.init === 'function') H.init({ gameId: CFG.gameId, sdkKey: CFG.sdkKey, testMode: !!CFG.testMode, platform: 'tiktok' });
+      if (typeof H.init === 'function') { var ir = H.init({ gameId: CFG.gameId, sdkKey: CFG.sdkKey, testMode: !!CFG.testMode, platform: 'tiktok' }); if (ir === false) throw new Error('init returned false'); }
       ready = true;
     } catch (e) { Platform.warn('hs: init failed', e); return null; }
     // Rewards are delivered through onGive (may arrive after the ad closes, or for queued grants).
@@ -63,5 +63,5 @@ var HSAds = (function () {
                                                     function (e) { once(false, (e && (e.errMsg || e.message)) || 'no_fill'); });
     } catch (e) { once(false, String(e)); }
   }
-  return { create: create, get ready() { return ready; } };
+  return { create: create, placeOf: place, get ready() { return ready; } };
 })();

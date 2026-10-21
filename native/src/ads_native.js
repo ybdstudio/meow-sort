@@ -14,7 +14,8 @@
 var Ads = (function () {
   var policy = new AdsPolicy(ADS, ADS.profile);
   var provider = null, showing = null, notice = null, safety = null, sessionStart = Platform.now() / 1000;
-  var stats = { inter: 0, reward: 0, noFill: 0, skipped: 0, errors: 0 };
+  var stats = { inter: 0, reward: 0, noFill: 0, skipped: 0, errors: 0, late: 0 };
+  var late = {};               // label → { fn, until }: reward still owed if the SDK's grant arrives after the close
   function now() { return Platform.now() / 1000; }
   function t() { return now() - sessionStart; }
   policy.reset(t());
@@ -107,7 +108,7 @@ var Ads = (function () {
       pending = function (ok, err) {
         if (ok) { policy.record('reward', label, t0, t()); stats.reward++; Platform.log('ads: reward ' + label + ' granted (#' + policy.impressions() + ' @' + t0.toFixed(0) + 's)'); safeCall(onGranted); }
         else {
-          if (err === 'closed_early') { fx.toast('Watch the whole video to get the reward'); policy.record('reward', label, t0, t()); stats.reward++; }
+          if (err === 'closed_early') { fx.toast('Watch the whole video to get the reward'); policy.record('reward', label, t0, t()); stats.reward++; late[label] = { fn: onGranted, until: t() + 30 }; }
           else { stats.noFill++; fx.toast('No video available right now'); }
           Platform.log('ads: reward ' + label + ' not granted (' + err + ')');
           if (onFail) safeCall(onFail, err);
@@ -136,7 +137,13 @@ var Ads = (function () {
       return true;
     },
     // HS SDK may grant rewards outside a show() call (queued/late grants)
-    _externalGrant: function (label) { Platform.log('ads: late grant ' + label); },
+    _externalGrant: function (label) {
+      var key = label;
+      if (!late[key]) Object.keys(late).forEach(function (k) { if (typeof HSAds !== 'undefined' && HSAds.placeOf(k) === label) key = k; });
+      var q = late[key];
+      if (q && q.until >= t()) { delete late[key]; stats.late++; Platform.log('ads: late grant ' + key + ' applied'); safeCall(q.fn); }
+      else Platform.log('ads: grant for ' + label + ' ignored (nothing owed)');
+    },
     _finishForTest: finish
   };
   function safeCall(f, a) { if (typeof f === 'function') try { f(a); } catch (e) { Platform.warn('ads callback', e); } }
