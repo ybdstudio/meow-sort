@@ -126,6 +126,27 @@ const ok = (c, m) => { console.log((c ? '  PASS ' : '  FAIL ') + m); if (!c) fai
   const m2 = await page.evaluate(() => MeowSort.game.hint());
   if (m2) { await tapSlot(m2.src, m2.idx); await tapSlot(m2.dst, -1); await settle(); }
   ok(errors.length === 0, 'ttquirks (no AudioParam ramps) → no errors on iPhone SE');
+
+  // Krypton gradient-alpha quirk: shelves/buttons must stay opaque (pixel check on a shelf plank + a booster button)
+  const px = (q) => page.evaluate(async (q) => {
+    await new Promise(r => setTimeout(r, 400));
+    const c = document.querySelector('#phone canvas'), g = c.getContext('2d'), v = MeowSort.view();
+    return q.map(([x, y]) => { const d = g.getImageData(Math.round((v.offX + x * v.scale) * v.dpr), Math.round((v.offY + y * v.scale) * v.dpr), 1, 1).data; return [d[0], d[1], d[2]]; });
+  }, q);
+  // shelf plank, bed, booster button, HUD coin pill, settings gear (all gradient fills drawn after rgba shadows)
+  const probes = [[150, 273], [204, 792], [120, 915], [70, 50], [486, 905]];
+  const delta = (a, b) => Math.max(...a.map((p, i) => Math.max(...p.map((c, k) => Math.abs(c - b[i][k])))));
+  await page.goto(base + '?device=iphone14'); await ready();
+  const clean = await px(probes);
+  await page.goto(base + '?device=iphone14&gradquirk=1&gradfix=0'); await ready();
+  const broken = await px(probes);
+  ok(delta(clean, broken) > 40, 'gradquirk without fix reproduces the device bug (max Δ ' + delta(clean, broken) + ')');
+  for (const mode of ['gradquirk=1', 'gradquirk=1&gradfixmode=create']) {
+    await page.goto(base + '?device=iphone14&' + mode); await ready();
+    const got = await px(probes);
+    ok(delta(clean, got) <= 6, 'gradient quirk fixed [' + mode + '] (max Δ ' + delta(clean, got) + ' vs clean render)');
+  }
+  await shot('08_gradquirk_fixed');
   await shot('07_iphonese');
 
   console.log(failures ? failures + ' check(s) failed' : 'All checks passed');

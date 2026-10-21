@@ -157,6 +157,34 @@
     return ac;
   }
 
+  /* ---- Krypton canvas quirk (seen on TikTok device): a gradient fillStyle inherits
+     the alpha of the last solid colour set on fillStyle, so a gradient set after
+     'rgba(...,0.3)' paints at 30%. Simulated with ?ttquirks=1 or ?gradquirk=1. ---- */
+  if (Q.ttquirks === '1' || Q.gradquirk === '1') {
+    var C2D = CanvasRenderingContext2D.prototype, fsd = Object.getOwnPropertyDescriptor(C2D, 'fillStyle');
+    function alphaOf(s) {
+      var m = /rgba?\(([^)]+)\)/i.exec(s); if (m) { var p = m[1].split(','); return p.length > 3 ? parseFloat(p[3]) : 1; }
+      if (/^#[0-9a-f]{8}$/i.test(s)) return parseInt(s.slice(7), 16) / 255;
+      if (/^#[0-9a-f]{4}$/i.test(s)) return parseInt(s[4] + s[4], 16) / 255;
+      return s === 'transparent' ? 0 : 1;
+    }
+    Object.defineProperty(C2D, 'fillStyle', { configurable: true, enumerable: true,
+      get: function () { return fsd.get.call(this); },
+      set: function (v) {
+        if (typeof v === 'string') { this.__solidA = alphaOf(v); this.__grad = false; } else this.__grad = true;
+        fsd.set.call(this, v);
+      } });
+    ['fill', 'fillRect', 'fillText'].forEach(function (fnName) {
+      var orig = C2D[fnName];
+      C2D[fnName] = function () {
+        if (!this.__grad || this.__solidA === undefined || this.__solidA >= 1) return orig.apply(this, arguments);
+        var a = this.globalAlpha; this.globalAlpha = a * this.__solidA;
+        try { return orig.apply(this, arguments); } finally { this.globalAlpha = a; }
+      };
+    });
+    console.warn('[emu] gradquirk: gradients inherit the previous solid fill alpha');
+  }
+
   var showCbs = [], hideCbs = [];
   function fireHide() { hideCbs.forEach(function (f) { try { f(); } catch (e) { console.error(e); } }); }
   function fireShow(q) { showCbs.forEach(function (f) { try { f({ query: q || {}, scene: '' }); } catch (e) { console.error(e); } }); }

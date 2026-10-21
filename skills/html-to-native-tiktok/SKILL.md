@@ -1,6 +1,6 @@
 ---
-name: "html-to-native-tiktok"
-description: "Port game from HTML prototype to TikTok Minis native build for gameplay testing"
+name: html-to-native-tiktok-v2
+description: Port an HTML/H5 game prototype to a TikTok Minis native package (game.js + canvas) with correct upload layout; use instead of html-to-native-tiktok.
 ---
 
 # Port HTML Game → TikTok Minis Native (Gameplay Test)
@@ -50,6 +50,7 @@ res/...              ← subpackage assets
   native/project/  project.config.json, game.json, res/ (subpackage, with res/game.js stub), ui/ (optional)
   native/emulator/ index.html (TTMinis.game shim)
   tools/           build_native.js, check_package.js, zip.js, (asset bake / level gen tools)
+                   → copy check_package.js + zip.js from this skill's scripts/ folder (if missing, write equivalents)
   dist/            build output: <game>/ (UPLOAD THIS), <game>-upload.zip, emulator/
   ```
 - [ ] `native/project/project.config.json`: `appid` (required), `compileType: "game"`
@@ -86,7 +87,8 @@ res/...              ← subpackage assets
 - [ ] `node tools/build_native.js --appid <APP_ID>` must:
   - [ ] concatenate modules → `dist/<game>/game.js` (syntax-check the bundle; minify if terser is available)
   - [ ] copy `game.json`, `project.config.json` (inject appid), `res/` (and `ui/`) to `dist/<game>/` **root**
-  - [ ] write `dist/<game>-upload.zip` with `game.json` at the zip root (zip the folder contents)
+  - [ ] write `dist/<game>-upload.zip` with `game.json` at the zip root (zip the folder contents;
+        `require('./zip').zipDir(dist/<game>, zipPath)` from scripts/zip.js works on any OS, no zip CLI needed)
   - [ ] run `tools/check_package.js dist/<game>` → game.json/game.js/project.config.json at root, valid JSON,
         lowercase `subpackages`, each root exists with a `game.js`, appid set, main < 4 MB, total < 30 MB, no `index.html`
   - [ ] copy the emulator to `dist/emulator/`

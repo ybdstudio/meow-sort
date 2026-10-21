@@ -78,7 +78,47 @@ var Platform = (function () {
         this.arc(0, 0, 1, a0, a1, ccw); this.restore();
       };
     }
+    fixGradientAlpha(ctx);
     return ctx;
+  }
+  /* TikTok native canvas (Krypton) bug: a gradient/pattern assigned to fillStyle or
+     strokeStyle inherits the ALPHA of the last solid colour set before it, e.g.
+     fillStyle='rgba(0,0,0,0.3)' (a shadow) then fillStyle=gradient paints the gradient at 30%.
+     That made shelves, beds, buttons, panels, HUD pills look see-through on device.
+     Fix: always set an opaque solid colour first, then the gradient.
+     Disable for A/B testing with launch query gradfix=0. */
+  function fixGradientAlpha(ctx) {
+    if (!ctx || ctx.__gradFix) return;
+    ctx.__gradFix = 'none';
+    if (launchQuery().gradfix === '0') { log('gradient alpha fix disabled'); return; }
+    var wrapped = 0, forceCreate = launchQuery().gradfixmode === 'create';   // test hook for the fallback path
+    if (!forceCreate) ['fillStyle', 'strokeStyle'].forEach(function (prop) {
+      var d = null, p = ctx;
+      while (p && !d) { d = Object.getOwnPropertyDescriptor(p, prop); if (!d) p = Object.getPrototypeOf(p); }
+      if (!d || !d.set || !d.get) return;
+      try {
+        Object.defineProperty(ctx, prop, { configurable: true, enumerable: true,
+          get: function () { return d.get.call(this); },
+          set: function (v) { if (v && typeof v === 'object') d.set.call(this, '#000000'); d.set.call(this, v); } });
+        wrapped++;
+      } catch (e) {}
+    });
+    // Check the wrapper really intercepts (host objects may ignore defineProperty).
+    if (wrapped === 2) {
+      try {
+        var probe = false, desc = Object.getOwnPropertyDescriptor(ctx, 'fillStyle');
+        if (desc && desc.set) probe = true;
+        if (probe) { ctx.__gradFix = 'setter'; log('gradient alpha fix: setter wrapper'); return; }
+      } catch (e) {}
+    }
+    // Fallback: reset the solid colour whenever a gradient/pattern is created
+    // (every gradient in the game is assigned right after it is created).
+    ['createLinearGradient', 'createRadialGradient', 'createPattern'].forEach(function (name) {
+      var orig = ctx[name]; if (typeof orig !== 'function') return;
+      ctx[name] = function () { try { this.fillStyle = '#000000'; } catch (e) {} return orig.apply(this, arguments); };   // all game gradients go to fillStyle
+    });
+    ctx.__gradFix = 'create';
+    log('gradient alpha fix: create-time reset');
   }
 
   /* ---------- images ---------- */
