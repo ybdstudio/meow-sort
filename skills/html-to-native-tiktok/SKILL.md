@@ -38,6 +38,11 @@ res/...              ← subpackage assets
 - Missions need TikTok ≥ 41.0: `addShortcut`, `getShortcutMissionReward` → `{canReceiveReward}`,
   `startEntranceMission`, `getEntranceMissionReward` → `{canReceiveReward}`, (0.32+) `reportMissionRewardGranted`.
   Share: `shareAppMessage({title, query})`. Silent login: `login()`.
+- **Canvas quirk (TikTok Krypton canvas, confirmed on device):** a gradient/pattern assigned to `fillStyle`
+  inherits the **alpha of the last solid colour** set before it. The common pattern
+  `fillStyle='rgba(0,0,0,0.3)'` (shadow) → `fillStyle=gradient` paints the gradient at 30%, so shelves, buttons,
+  panels and pills look see-through. Strokes, text, solid fills and `drawImage` are unaffected, and nothing is logged.
+  The adapter must set an opaque colour before every gradient (see Phase 2).
 - Limits (non-Unity): main package ≤ 4 MB (total minus subpackage roots), total ≤ 30 MB. `game.json` uses lowercase `subpackages`.
 
 ## Checklist
@@ -68,6 +73,11 @@ res/...              ← subpackage assets
 - [ ] `native/src/adapter.js` (`Platform`): canvas, offscreen canvas, images, storage (JSON strings), audio
       (`setValueAtTime` before ramps; fall back when ramps are missing), safe area + capsule normalisation,
       touch, lifecycle, launch query, subpackage, `ctx.ellipse` polyfill, try/catch around every SDK call
+- [ ] **Gradient alpha fix** in `adapter.patchContext(ctx)`: wrap the `fillStyle`/`strokeStyle` setters on the context
+      instance (`Object.defineProperty` with the prototype's descriptor) so that assigning an object (gradient/pattern)
+      first sets `'#000000'`, then the value. Fallback when the host object rejects it: patch
+      `createLinearGradient/createRadialGradient/createPattern` to set `fillStyle='#000000'` first. Log which path is
+      active, and allow a launch-query switch (`gradfix=0`) for A/B on device
 - [ ] Avoid `shadowBlur` for glows on device (fallback: radial gradient halo)
 - [ ] `native/src/ui_native.js`: loading screen with progress, fatal-error screen (no DOM), panels the game
       needs, and press handling: buttons fire on release inside the button (`buttonStart/Move/End`), board taps on start
@@ -99,6 +109,11 @@ res/...              ← subpackage assets
   - [ ] boots with no JS errors · touch selects/moves · HUD inside safe area and below the capsule
   - [ ] a level can be finished by real taps · save/load across reload · onHide saves
   - [ ] mission sheets + reward popup, no double reward · `?ttquirks=1` audio quirks · small (iPhone SE) and notched devices
+  - [ ] the emulator must **simulate device canvas quirks** (`?ttquirks=1` / `?gradquirk=1`: override the
+        `CanvasRenderingContext2D.prototype.fillStyle` setter to remember the last solid alpha, and multiply
+        `globalAlpha` by it in `fill/fillRect/fillText` while a gradient is active); a plain browser hides this bug
+  - [ ] pixel-compare test: read the same points (shelf, bed, button, HUD pill) from a clean render, a quirk render
+        with the fix off (must differ, which proves the simulation works) and a quirk render with the fix on (must match)
   - [ ] automate it: `tools/test_emulator.js` (Playwright) taps the canvas via real pointer events
 - [ ] **Device**
   ```bash
@@ -115,6 +130,9 @@ res/...              ← subpackage assets
   `dist/<game>-upload.zip`; confirm with `node tools/check_package.js <folder|zip>`.
 - **Subpackage error**: `subpackages` must be lowercase, every `root` must exist and contain `game.js`.
 - **DevTool won't run / upload**: `appid` missing or still the placeholder in `project.config.json`.
+- **UI see-through on device (shelves, beds, buttons, panels, popups faded; cats/images fine; vConsole shows no error)**:
+  the Krypton gradient-alpha quirk. Add the gradient alpha fix to the adapter, reproduce it in the emulator with
+  `?gradquirk=1` first, then verify by pixel-comparing against a clean render.
 - **Audio freezes**: AudioParam ramps; make sure the adapter sets values first and falls back.
 - **HUD off-screen / under capsule**: normalise safeArea + `getMenuButtonBoundingClientRect` in the adapter.
 - **Touch not working**: touch field names; log `res.changedTouches[0]` on device.
