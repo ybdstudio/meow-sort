@@ -38,12 +38,15 @@ res/...              ← subpackage assets
 - Missions need TikTok ≥ 41.0: `addShortcut`, `getShortcutMissionReward` → `{canReceiveReward}`,
   `startEntranceMission`, `getEntranceMissionReward` → `{canReceiveReward}`, (0.32+) `reportMissionRewardGranted`.
   Share: `shareAppMessage({title, query})`. Silent login: `login()`.
-- **Canvas quirk (TikTok Krypton canvas, seen on device: no error, just faded UI):** a gradient fill paints with the
-  **alpha of the last solid colour that was DRAWN**. The common pattern `fillStyle='rgba(0,0,0,0.3)'; fill()` (shadow)
-  → `fillStyle=gradient; fill()` paints the gradient at 30%, so shelves, buttons, panels and pills look see-through.
-  Strokes, text, solid fills and `drawImage` are unaffected, and nothing is logged.
-  State syncs to native **lazily, on draw**: re-assigning `fillStyle='#000'` before the gradient does NOT help
-  (tried, failed on device). The fix is to never send a translucent colour to native at all (see Phase 2 SafeContext).
+- **Gradients are NOT reliable on TikTok's native canvas (Krypton). Design the native render path FLAT.**
+  Seen on device: every `createLinearGradient`/`createRadialGradient` fill (shelves, beds, buttons, panels, pills,
+  stars) rendered faded/see-through, with no error in vConsole. Solid fills, strokes, text and `drawImage` were fine.
+  Fixes that did NOT work on device, although they passed a browser simulation: re-assigning an opaque `fillStyle`
+  before the gradient (v1), and a wrapper that never sends translucent colours + re-applies alpha per draw (v2).
+  What worked: drawing every gradient as a **solid colour** (average of its stops).
+- **Soft effects** (glow, halo, blur, soft shadow) must not use `shadowBlur` or radial gradients: in flat mode a radial
+  halo becomes a hard blob. **Bake them into images at build time** (e.g. a blurred silhouette per sprite) and draw
+  them with `drawImage`.
 - Limits (non-Unity): main package ≤ 4 MB (total minus subpackage roots), total ≤ 30 MB. `game.json` uses lowercase `subpackages`.
 
 ## Checklist
@@ -74,21 +77,24 @@ res/...              ← subpackage assets
 - [ ] `native/src/adapter.js` (`Platform`): canvas, offscreen canvas, images, storage (JSON strings), audio
       (`setValueAtTime` before ramps; fall back when ramps are missing), safe area + capsule normalisation,
       touch, lifecycle, launch query, subpackage, `ctx.ellipse` polyfill, try/catch around every SDK call
-- [ ] **SafeContext** (`adapter.patchContext(ctx)` returns it; the game uses it as `ctx`, unchanged code): a plain JS
-      wrapper we own around the native 2D context, so interception is guaranteed (do not rely on
-      `defineProperty` on host objects):
-  - [ ] `fillStyle`/`strokeStyle` setters parse colours: `rgba(r,g,b,a)` / `#rrggbbaa` → opaque `rgb(r,g,b)` + alpha `a`
-        (cache parsed colours, bounded size); gradients come from wrapper `createLinear/RadialGradient` (record stops)
-  - [ ] track `globalAlpha`, `fillStyle`, `strokeStyle` in our own `save/restore` stack
-  - [ ] before **every** `fill/fillRect/fillText/stroke/strokeRect/strokeText/drawImage`: set native `globalAlpha =
-        userAlpha × colourAlpha` and native style, so native only ever sees opaque solid colours
+- [ ] **SafeContext** (`adapter.patchContext(ctx)` returns it; the game keeps using it as `ctx`, code unchanged): a plain
+      JS wrapper we own around the native 2D context, so interception is guaranteed (don't rely on `defineProperty`
+      on host objects):
+  - [ ] wrapper `createLinear/RadialGradient` return a gradient object that records its stops
+  - [ ] **FLAT mode, the native default**: a gradient used as fill/stroke is drawn as the average colour of its stops
+  - [ ] colours: `rgba(r,g,b,a)` / `#rrggbbaa` → opaque `rgb(r,g,b)` + alpha folded into `globalAlpha`, with style and
+        alpha re-applied before every draw call (cache parsed colours, bounded size); own `save/restore` stack for these
   - [ ] forward everything else (paths, transforms, text props, `measureText`, `clip`); `ellipse` polyfill
-  - [ ] `gradfix=0` launch query returns the raw context (A/B); expose `renderMode()` (`safe`/`flat`/`raw`)
-- [ ] **Graphics fallback toggle** in Settings (`Graphics: Gradient / Flat`, saved): flat mode draws each gradient as the
-      average of its stops, so a device-specific canvas bug can be bypassed without a new build
+  - [ ] `gradfix=0` launch query returns the raw context (A/B); expose `renderMode()` (`flat`/`safe`/`raw`)
+- [ ] **Graphics toggle** in Settings (`Graphics: Flat / Gradient (beta)`, saved; default **Flat**) so gradients can be
+      re-tested on new TikTok versions without a new build; apply flat before the loading screen draws
+- [ ] **Bake soft effects** in the asset bake step: e.g. selection glow = sprite silhouette filled with the glow colour,
+      blurred with `ctx.filter='blur(σ)'` (σ ≈ prototype `shadowBlur` / 2 in sprite pixels), stored at half resolution
+      in its own small atlas (`res/glow.png`), drawn under the sprite with `drawImage`. Compare against the H5 prototype
+      side by side and tune alpha/σ until it matches
 - [ ] **Version + build stamp visible** in Settings and on the loading screen (`Version X.Y.Z · build <UTC time>`,
       build script injects the stamp) and logged on boot with the render mode, so device reports name the exact build
-- [ ] Avoid `shadowBlur` for glows on device (fallback: radial gradient halo)
+- [ ] No `shadowBlur` on device (default off; `?shadow=1` to try it in the emulator)
 - [ ] `native/src/ui_native.js`: loading screen with progress, fatal-error screen (no DOM), panels the game
       needs, and press handling: buttons fire on release inside the button (`buttonStart/Move/End`), board taps on start
 - [ ] Bottom nav (Shop/Upgrade/Task/Map/Settings) only if the game actually has those screens
@@ -143,9 +149,13 @@ res/...              ← subpackage assets
 - **Subpackage error**: `subpackages` must be lowercase, every `root` must exist and contain `game.js`.
 - **DevTool won't run / upload**: `appid` missing or still the placeholder in `project.config.json`.
 - **UI see-through on device (shelves, beds, buttons, panels, popups faded; cats/images fine; vConsole shows no error)**:
-  the Krypton gradient-alpha quirk. Use SafeContext (not a fillStyle reset, which fails because of lazy sync),
-  reproduce it in the emulator with `?gradquirk=1` first, verify by pixel-comparing against a clean render. If it still
-  shows on a device, check the build stamp in Settings (stale upload?), then try `Graphics: Flat`.
+  gradient fills on TikTok's canvas. Make sure the build renders FLAT (Settings shows `render: flat`); check the
+  build stamp in Settings first (stale upload?). Don't spend more rounds on gradient workarounds; they passed in
+  the emulator and still failed on device.
+- **Ugly blob / hard ring around a selected sprite**: a radial-gradient halo drawn in flat mode. Replace it with a
+  baked glow image.
+- **Emulator says fixed, device says not**: the simulation is a model, not the device. Change the approach (avoid the
+  feature), keep a Settings toggle for A/B, and ask the user for a screen recording plus the build line from Settings.
 - **"Still the same" after an update**: compare the version/build shown in Settings with the build you produced;
   DevTool/TikTok may still be running a previous upload or a cached package.
 - **Audio freezes**: AudioParam ramps; make sure the adapter sets values first and falls back.
